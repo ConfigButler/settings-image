@@ -1,31 +1,69 @@
 # settings-image
 
-Build a folder of settings into a small, content-addressed OCI image, and mount it next to your
+Build a folder of settings into a small, reproducible OCI image, and mount it next to your
 application with a Kubernetes [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/).
 
-> **Status: bootstrapping.** The repository has its toolchain, CI and release process. The CLI
-> only answers `version` so far.
+> **Status: bootstrapping.** The repository has its toolchain, CI and release process, and its
+> design. The CLI only answers `version` so far. See [docs/plan.md](docs/plan.md).
 
-## Why an image
+## Why now: Kubernetes can mount an image as a volume
 
-An image volume mounts the files of an OCI image read-only into a pod, and a new digest is an
-ordinary rolling update: the configuration that runs is declared in the pod spec, and
-`kubectl rollout undo` rolls it back. The image needs no base image, no shell and no entrypoint.
-It is one layer holding your files.
+```yaml
+spec:
+  containers:
+    - name: app
+      volumeMounts:
+        - { name: settings, mountPath: /etc/app, readOnly: true }
+  volumes:
+    - name: settings
+      image:
+        reference: ghcr.io/acme/app-settings@sha256:c5edc2c3…   # by digest, always
+```
 
-It does have to be a **real image**: an image config whose `rootfs.diff_ids` lists the layer.
-Tools that push generic OCI artifacts do not produce one. A plain `oras push` is refused when the
-kubelet pulls it, and a Flux artifact mounts as an **empty directory, with no error**.
+| Kubernetes | Image volumes |
+|---|---|
+| v1.31 (August 2024) | alpha, behind a feature gate |
+| v1.33 (April 2025) | beta, still off by default; `subPath` support |
+| v1.35 | **on by default** |
+| v1.36 | **stable** |
+
+That is what this tool is for. Until image volumes, the way to ship settings as an image was an init
+container that copied files out of it. That needs an image that can *run*: a base image with a shell,
+to scan and patch. Now the kubelet mounts the files itself, read-only, from an image that contains
+nothing but your settings.
+
+What you get:
+
+- The settings that run are **declared in the pod spec, by digest**.
+- A change is **an ordinary rolling update**, and **`kubectl rollout undo` rolls the settings back**.
+- **Nothing in the image executes.**
+
+## Why a tool, when Docker, ORAS and Flux already push to registries
+
+Because the volume has to be a **real image**: an image config whose `rootfs.diff_ids` lists its
+layers, so the container runtime can unpack it. Generic OCI artifacts are not that:
+
+- a plain `oras push` is refused when the kubelet pulls it;
+- a Flux artifact (`flux push artifact`) mounts as an **empty directory, with no error**;
+- a `FROM scratch` Dockerfile does give an image, but a new digest on every build.
+
+The full comparison is in [docs/alternatives.md](docs/alternatives.md).
 
 settings-image is being built to produce the real thing, and to add what settings need:
 
 - **The same folder gives the same digest.** A commit that touches other files rolls no pods, and a
   rollback lands on the old digest.
-- **Refusals before anything is pushed**: an empty folder, a link that leaves the folder, a
-  Kubernetes `Secret`.
-- **Provenance**: the commit and its author, attached to the image as an OCI referrer.
+- **It refuses bad input before anything is pushed**: an empty folder, a link that leaves the
+  folder, a Kubernetes `Secret`.
+- **Provenance:** the commit and its author, attached to the image as an OCI referrer.
+- **A GitHub Action**, so a commit that changes the folder becomes a new image.
 
-It understands Kubernetes objects (KRM) first, and is not limited to them.
+It understands Kubernetes objects (KRM) first: a `ConfigMap`'s keys also appear as plain files.
+
+## Docs
+
+[docs/](docs/README.md): the plan, the image format (with known-answer digests), the CLI, the GitHub
+Action, the alternatives, and the measurements behind each rule.
 
 ## Develop
 

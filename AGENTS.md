@@ -3,7 +3,9 @@
 Guidance for any coding agent working in this repository.
 
 settings-image builds a folder of settings into a content-addressed OCI image that a kubelet can
-mount as `volumes[].image`, and pushes it. Read [README.md](README.md) first.
+mount as `volumes[].image`, and pushes it. Read [README.md](README.md) first, then
+[docs/plan.md](docs/plan.md) for what to build next. [docs/format-v1.md](docs/format-v1.md) is the
+contract: its known-answer digests are the acceptance test for every byte the code writes.
 
 ## Definition of done
 
@@ -23,6 +25,9 @@ When you finish, say which of these you ran and what you saw. A step you skipped
 skipped, never as passed.
 
 ## How changes reach `main`
+
+**Commit straight to `main` and push**; no feature branch or pull request is needed. The gate
+above still applies before you push: CI runs after the push, not before it.
 
 - **Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:` …). release-please reads them to
   pick the next version and write the changelog, so the prefix is not decoration. A PR title is
