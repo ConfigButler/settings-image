@@ -114,7 +114,7 @@ offending path and a reason. Every one of these is refused:
 | an **empty** result | publishing it would roll every consumer to "no settings" |
 | a `.yaml`/`.yml`/`.json` file that does not parse | an unparseable file is where a Secret would hide |
 | two archive entries for one path, or a path that is both a file and a directory | not a folder |
-| a document of `kind: Secret` | a registry is not a secret store |
+| a document of `kind: Secret` that is not sealed (below) | a registry is not a secret store |
 | an unsafe `files/` name or key, or two documents writing one `files/` path | §3 |
 | a `ConfigMap` `data` value that is not a string, or `binaryData` that is not base64 | the apiserver refuses it too |
 
@@ -122,12 +122,23 @@ Known limit of v1: a JSON or YAML file whose top level is not a mapping (a list,
 decode, and is refused. Plain non-KRM settings files with those extensions hit this. A later layout
 may relax it.
 
-**Planned, not in v1: sealed documents.** A document with a top-level `sops:` map will be admitted
-when every value under a key matching its `encrypted_regex` is `ENC[AES256_GCM,…]`, at least one
-value is encrypted, and `sops.mac` is present. Any other SOPS rule is refused by name. A sealed
-`Secret` is admitted. A kind on a writer-supplied "sensitive kinds" list that arrives unsealed is
-refused. With `files/` on, a sealed `ConfigMap` is refused, because one value per file cannot carry
-its MAC. The writer never decrypts anything. See [plan.md](plan.md) phase 4.
+**Sealed documents (SOPS).** A document with a top-level `sops:` key is admitted only when it is
+sealed this way, and refused otherwise:
+
+- `sops.encrypted_regex` is set, and every value under a key it matches, at any depth, is
+  `ENC[AES256_GCM,…]`;
+- at least one value is encrypted;
+- `sops.mac` is present (`ENC[AES256_GCM,…]`);
+- no other SOPS rule is set (`encrypted_suffix`, `unencrypted_suffix`, `unencrypted_regex`,
+  `encrypted_comment_regex`, `unencrypted_comment_regex`, `mac_only_encrypted`). Each is refused
+  by name: only `encrypted_regex` can be checked to have left nothing in plaintext.
+
+A sealed `Secret` is admitted. A kind on a writer-supplied "sensitive kinds" list (`group/Kind`, or
+`Kind` for the core group) that arrives unsealed is refused. A sealed document has no `files/`
+view, and with `files/` on, a sealed `ConfigMap` is refused, because one value per file cannot
+carry its MAC. The writer never decrypts anything: the document is carried byte for byte under
+`objects/`, so it decrypts after the pull. Admitting sealed documents changes no byte of any image
+that v1 already built, so it is still layout `v1`.
 
 ## 7. Provenance: a referrer, not part of the image
 

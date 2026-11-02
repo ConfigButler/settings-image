@@ -41,7 +41,7 @@ func (d document) str(keys ...string) string {
 
 // configMapFiles parses every .yaml, .yml and .json input file, refuses what format-v1.md §6
 // refuses, and returns the files/ view of every ConfigMap.
-func configMapFiles(files map[string][]byte) (map[string][]byte, error) {
+func configMapFiles(files map[string][]byte, opts RenderOptions) (map[string][]byte, error) {
 	paths := make([]string, 0, len(files))
 	for p := range files {
 		if isParsed(p) {
@@ -57,6 +57,12 @@ func configMapFiles(files map[string][]byte) (map[string][]byte, error) {
 			return nil, err
 		}
 		for _, doc := range docs {
+			if err := checkDocument(p, doc, opts); err != nil {
+				return nil, err
+			}
+			if isSealed(doc) {
+				continue // a sealed document has no files/ view: its values are ciphertext
+			}
 			if err := addConfigMap(views, p, doc); err != nil {
 				return nil, err
 			}
@@ -94,10 +100,32 @@ func decodeAll(p string, b []byte) ([]document, error) {
 	}
 }
 
-func addConfigMap(views map[string][]byte, p string, doc document) error {
-	if doc.str("kind") == "Secret" {
-		return refuse(p, "a Secret; a registry is not a secret store")
+// checkDocument applies the sealing rules: a SOPS document must be sealed as v1 admits; a
+// Secret, or a sensitive kind, must be sealed; and a sealed ConfigMap cannot have a files/ view,
+// because one value per file cannot carry the MAC.
+func checkDocument(p string, doc document, opts RenderOptions) error {
+	kind := kindKey(doc)
+	if isSealed(doc) {
+		if err := checkSealed(p, doc); err != nil {
+			return err
+		}
+		if kind == "ConfigMap" && !opts.NoFiles {
+			return refuse(p, "a sealed ConfigMap cannot have a files/ view; seal a Secret, or use --no-files")
+		}
+		return nil
 	}
+	if kind == "Secret" {
+		return refuse(p, "an unsealed Secret; a registry is not a secret store (seal it with SOPS)")
+	}
+	for _, sensitive := range opts.SensitiveKinds {
+		if kind == sensitive {
+			return refuse(p, "%s is a sensitive kind and arrives unsealed (seal it with SOPS)", kind)
+		}
+	}
+	return nil
+}
+
+func addConfigMap(views map[string][]byte, p string, doc document) error {
 	if doc.str("apiVersion") != "v1" || doc.str("kind") != "ConfigMap" {
 		return nil
 	}

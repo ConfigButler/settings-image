@@ -1,0 +1,6 @@
+# SOPS rules for the examples. It sits beside the settings folders, not in one, so it is not
+# packed into an image. The recipient is testdata/sops/age-test-key.txt: a test key only.
+creation_rules:
+  - path_regex: \.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    age: age19qudjthka6ekyd3wxfkwg443n28lwdnx75jelx8p24j8gv6rmdwqlez4q3

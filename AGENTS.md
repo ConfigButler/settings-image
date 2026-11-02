@@ -18,8 +18,9 @@ task lint    # golangci-lint, go mod tidy, hadolint, actionlint, markdownlint: 0
 
 For anything that builds or pushes an image, also **observe it**: push to a registry and read it
 back with the *other* tool (`crane` for what we wrote with oras-go, and the reverse), and mount it
-in a pod when the change touches the image's shape. A digest test proves the bytes are stable; it
-does not prove a kubelet accepts them.
+in a pod when the change touches the image's shape: `task test-mount` creates a k3d cluster
+(`task cluster`) and checks every example and edge case as a mounted image volume. A digest test
+proves the bytes are stable; it does not prove a kubelet accepts them.
 
 When you finish, say which of these you ran and what you saw. A step you skipped is reported as
 skipped, never as passed.

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database
+data:
+  host: postgres.shop.svc
+  port: "5432"

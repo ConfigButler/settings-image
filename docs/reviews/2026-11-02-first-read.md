@@ -133,3 +133,27 @@ that call `pkg/settingsimage` directly, with a fixed `Provenance` value.
 - The Action's push script, run locally with `RUNNER_TEMP` and `GITHUB_OUTPUT`, wrote the outputs
   and reported `changed=false` on its second run. **The Action has not run on GitHub yet**, and
   nothing was pushed to ghcr.io.
+
+## Second round: KRM, SOPS and a cluster (2026-11-02)
+
+- **KRM without CRDs (maintainer):** the build does not validate against schemas, and does not
+  need to for now. A custom resource is carried byte for byte; only the fields that find
+  ConfigMaps and Secrets are read. Validation against CRDs could be an optional lint later.
+- **Sealed documents (format-v1.md §6) are built now**, ahead of phase 4's order, because the
+  maintainer wants SOPS supported. They stay layout `v1`: admitting more input changes no byte of
+  an image v1 already built. `--sensitive-kind` came with them. The `sops` and `age` CLIs are in
+  the devcontainer's `ci` stage; age has no checksum file, so its sha256 is pinned in the
+  Dockerfile.
+- **The test key is committed** (`testdata/sops/age-test-key.txt`), marked as a test key, so
+  anyone can decrypt the example and the fixtures.
+- **A k3d cluster for mount tests**, modelled on gitops-reverser's `start-cluster.sh` without its
+  audit webhook: `rancher/k3s:v1.37.1-k3s1`, one node, a k3d registry. `task test-mount` mounts the
+  three examples and `testdata/mount/edge-cases` in one pod (uid 1000, read-only root filesystem),
+  and checks 24 things. All passed on its first run. The mounts were `ro` but not `noexec`, which
+  is why the forced `0644` matters: a committed `0755` script failed with `permission denied`.
+- **The self-test passed on GitHub**, against the service registry and against ghcr.io, with the
+  same digest on both. setup-go's cache never restored with `uses: ./` (a path ending in `/./`),
+  which is fixed by resolving the action's path first.
+- **Open: release-please proposes 1.0.0.** The manifest starts at `0.0.0`, and release-please's
+  first release is 1.0.0 unless told otherwise, while the docs plan a floating `v0` tag. Not
+  changed; for the maintainer.

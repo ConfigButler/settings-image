@@ -1,0 +1,4 @@
+# Not KRM, and not parsed: any extension other than .yaml, .yml or .json goes in as is.
+[pricing]
+scoop = 2.50
+cone = 0.50

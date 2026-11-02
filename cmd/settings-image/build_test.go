@@ -293,3 +293,11 @@ func TestBuildUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildSensitiveKind(t *testing.T) {
+	r := newRepo(t)
+	code, _, stderr := cli(t, "build", r.shop(), "--sensitive-kind", "ConfigMap")
+	if code != exitRefused || !strings.Contains(stderr, "sensitive") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}

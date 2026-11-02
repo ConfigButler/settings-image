@@ -52,6 +52,14 @@ RUN apt-get update \
 # CRANE_VERSION -> https://github.com/google/go-containerregistry/releases
 #   oras pushes and inspects the images this repository builds; crane is the independent second
 #   reader that checks them. Two tools on purpose: one reads back what the other did not write.
+# KUBECTL_VERSION -> https://github.com/kubernetes/kubernetes/releases
+# K3D_VERSION -> https://github.com/k3d-io/k3d/releases
+#   kubectl and k3d run the image-volume test cluster (task cluster, task test-mount), with the
+#   same k3s line as gitops-reverser.
+# SOPS_VERSION -> https://github.com/getsops/sops/releases
+# AGE_VERSION -> https://github.com/FiloSottile/age/releases (no checksum file: AGE_SHA256 is
+#   the sha256 of age-${AGE_VERSION}-linux-amd64.tar.gz, recorded on first download)
+#   sops and age make the sealed fixtures and decrypt what the test cluster mounted.
 # NODE_MAJOR -> https://github.com/nodejs/node/releases (a current LTS line)
 # MARKDOWNLINT_CLI2_VERSION -> https://www.npmjs.com/package/markdownlint-cli2?activeTab=versions
 ENV PATH="/go/bin:/usr/local/go/bin:${PATH}" \
@@ -61,6 +69,11 @@ ENV PATH="/go/bin:/usr/local/go/bin:${PATH}" \
     HADOLINT_VERSION=2.15.1 \
     ORAS_VERSION=1.3.6 \
     CRANE_VERSION=v0.22.1 \
+    KUBECTL_VERSION=v1.37.1 \
+    K3D_VERSION=v5.9.0 \
+    SOPS_VERSION=v3.13.3 \
+    AGE_VERSION=v1.3.2 \
+    AGE_SHA256=cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10 \
     NODE_MAJOR=24 \
     MARKDOWNLINT_CLI2_VERSION=0.24.0
 
@@ -116,6 +129,30 @@ RUN tmpdir="$(mktemp -d)" && cd "${tmpdir}" \
     && grep "  ${asset}$" crane-checksums.txt | sha256sum -c - \
     && tar -xzf "${asset}" crane \
     && install -m 0755 crane /usr/local/bin/crane \
+    && cd / && rm -rf "${tmpdir}"
+
+# Install kubectl, k3d, sops and age (checksum-verified).
+RUN tmpdir="$(mktemp -d)" && cd "${tmpdir}" \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o kubectl \
+    && echo "$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256")  kubectl" \
+       | sha256sum -c - \
+    && install -m 0755 kubectl /usr/local/bin/kubectl \
+    && base="https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}" \
+    && curl -fsSL "${base}/k3d-linux-amd64" -o k3d-linux-amd64 \
+    && curl -fsSL "${base}/checksums.txt" -o k3d-checksums.txt \
+    && grep "  _dist/k3d-linux-amd64$" k3d-checksums.txt | sed 's|_dist/||' | sha256sum -c - \
+    && install -m 0755 k3d-linux-amd64 /usr/local/bin/k3d \
+    && asset="sops-${SOPS_VERSION}.linux.amd64" \
+    && base="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}" \
+    && curl -fsSL "${base}/${asset}" -o "${asset}" \
+    && curl -fsSL "${base}/sops-${SOPS_VERSION}.checksums.txt" -o sops-checksums.txt \
+    && grep "  ${asset}$" sops-checksums.txt | sha256sum -c - \
+    && install -m 0755 "${asset}" /usr/local/bin/sops \
+    && asset="age-${AGE_VERSION}-linux-amd64.tar.gz" \
+    && curl -fsSL "https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/${asset}" -o "${asset}" \
+    && echo "${AGE_SHA256}  ${asset}" | sha256sum -c - \
+    && tar -xzf "${asset}" \
+    && install -m 0755 age/age age/age-keygen /usr/local/bin/ \
     && cd / && rm -rf "${tmpdir}"
 
 # Install Node.js, in the ci stage because markdownlint-cli2 is an npm package and `task lint`

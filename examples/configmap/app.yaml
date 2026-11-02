@@ -1,0 +1,21 @@
+# Two ConfigMaps in one file. Each key becomes a plain file under files/<name>/.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-settings
+data:
+  settings.yaml: |
+    maxScoops: 3
+    currency: EUR
+  welcome.txt: |
+    Welcome to the ice cream shop!
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: branding
+data:
+  colour: "#f4a6c0"
+binaryData:
+  # A 1x1 PNG: binaryData is base64-decoded into files/branding/logo.png.
+  logo.png: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==

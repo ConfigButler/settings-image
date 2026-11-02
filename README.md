@@ -95,7 +95,11 @@ Open the repository in its devcontainer. Everything is a [Task](https://taskfile
 task test     # unit tests
 task lint     # Go, go.mod, Dockerfiles, workflows, markdown
 task build    # bin/settings-image, with its version baked in
+task test-mount  # a k3d cluster: mount the examples as image volumes and check every file
 ```
+
+[examples/](examples/) has settings folders to try: ConfigMaps, custom resources, and a
+SOPS-sealed Secret.
 
 ## License
 

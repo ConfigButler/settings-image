@@ -1,0 +1,5 @@
+# TEST KEY ONLY. Committed on purpose so anyone can decrypt the example and test fixtures.
+# Never use it for a real secret.
+# created: 2026-11-02T16:55:58Z
+# public key: age19qudjthka6ekyd3wxfkwg443n28lwdnx75jelx8p24j8gv6rmdwqlez4q3
+AGE-SECRET-KEY-1RTJAUQEHJMPHQTECJCTZKYCEWW62DME6MYUWRSL6TXCJMADVX4KS87ZSD2

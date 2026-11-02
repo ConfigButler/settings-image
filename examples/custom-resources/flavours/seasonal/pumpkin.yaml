@@ -1,0 +1,6 @@
+apiVersion: shop.configbutler.ai/v1
+kind: Flavour
+metadata:
+  name: pumpkin-spice
+spec:
+  available: [september, october, november]

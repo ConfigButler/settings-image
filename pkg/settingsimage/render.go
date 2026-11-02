@@ -26,6 +26,9 @@ type Tree map[string][]byte
 type RenderOptions struct {
 	// NoFiles leaves out the files/ view.
 	NoFiles bool
+	// SensitiveKinds are kinds that must arrive sealed with SOPS, as "group/Kind", or "Kind" for
+	// the core group. A Secret must always be sealed.
+	SensitiveKinds []string
 }
 
 // Render reads the folder fsys (for a directory on disk, os.DirFS) into a tree, or refuses it.
@@ -194,7 +197,7 @@ func (in *input) render(opts RenderOptions) (Tree, error) {
 	for p, b := range in.files {
 		tree["objects/"+p] = b
 	}
-	views, err := configMapFiles(in.files)
+	views, err := configMapFiles(in.files, opts)
 	if err != nil {
 		return nil, err
 	}

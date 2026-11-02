@@ -105,6 +105,24 @@ tasks:
     cmds:
       - git ls-files -z '*.md' | xargs -0 -r markdownlint-cli2
 
+  cluster:
+    desc: Create (or reuse) the k3d cluster and registry for the mount test
+    cmds:
+      - test/mount/cluster.sh
+
+  cluster-down:
+    desc: Delete the k3d cluster and its registry
+    cmds:
+      - k3d cluster delete settings-image
+      - k3d registry delete k3d-settings-image-registry
+
+  test-mount:
+    desc: Push the examples and edge cases, mount them as image volumes in a pod, and check every file
+    deps: [cluster]
+    cmds:
+      - CGO_ENABLED=0 go build -o {{.BIN}} ./cmd/settings-image
+      - test/mount/run.sh
+
   clean:
     desc: Remove build output
     cmds:

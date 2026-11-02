@@ -31,6 +31,7 @@ settings-image version
 | `--branch-tag <branch>` | yes | yes | add the sanitised branch tag ([format-v1.md §8](format-v1.md#8-tags-and-pushing-in-order)); pushed last |
 | `--source <url>` | yes | yes | the repository URL for `org.opencontainers.image.source` and provenance; overrides detection (§3) |
 | `--no-files` | yes | yes | leave out the `files/` view |
+| `--sensitive-kind <group/Kind>` (repeatable) | yes | yes | a kind that must arrive sealed with SOPS ([format-v1.md §6](format-v1.md#6-refusals)); `Kind` alone for the core group. A `Secret` must always be sealed |
 | `--no-provenance` | yes | yes | build no referrer and no `sha-` tag, and skip Git entirely (also allows a folder outside Git); the source then comes from `--source` or `GITHUB_*` only |
 | `--allow-dirty` | yes | yes | build a folder with uncommitted changes; implies no provenance and no `sha-` tag |
 | `--allow-shallow` | yes | yes | accept a shallow clone (§3); provenance then names HEAD and says so in a warning |
@@ -112,7 +113,7 @@ Without `--json`, stdout carries only the `reference`, so `ref=$(settings-image 
 
 ## 7. Not in the CLI
 
-- **No decryption, ever, and no keys.** Sealed documents (phase 4) are checked, not opened.
+- **No decryption, ever, and no keys.** Sealed documents are checked, not opened.
 - **No registry management.** Creating the repository, setting visibility and retention are the
   registry's business.
 - **No watching.** Following a Git source continuously is the controller's job (phase 3).

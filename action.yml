@@ -58,11 +58,17 @@ outputs:
 runs:
   using: composite
   steps:
+    # With `uses: ./`, github.action_path ends in "/./", which setup-go refuses as a cache path.
+    - name: Resolve the action's path
+      id: source
+      shell: bash
+      run: echo "dir=$(cd "$GITHUB_ACTION_PATH" && pwd -P)" >> "$GITHUB_OUTPUT"
+
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: ${{ github.action_path }}/go.mod
-        cache-dependency-path: ${{ github.action_path }}/go.sum
+        go-version-file: ${{ steps.source.outputs.dir }}/go.mod
+        cache-dependency-path: ${{ steps.source.outputs.dir }}/go.sum
 
     - name: Build settings-image
       shell: bash

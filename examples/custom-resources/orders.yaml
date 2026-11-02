@@ -1,0 +1,18 @@
+# Custom resources: carried byte for byte under objects/. No CRD is needed to build the image;
+# the application decodes the kinds it knows.
+apiVersion: shop.configbutler.ai/v1
+kind: IceCreamOrder
+metadata:
+  name: vanilla
+spec:
+  flavour: vanilla
+  scoops: 2
+---
+apiVersion: shop.configbutler.ai/v1
+kind: IceCreamOrder
+metadata:
+  name: chocolate
+spec:
+  flavour: chocolate
+  scoops: 3
+  toppings: [sprinkles, fudge]
