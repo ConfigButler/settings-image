@@ -39,6 +39,9 @@
       "extensions": [
         "golang.go",
         "ms-azuretools.vscode-docker",
+        // Pinned, as in gitops-reverser: 26.1021.22027's webview never renders in the
+        // devcontainer (renderer_ready_timeout). Unpin once a newer release is confirmed working.
+        "openai.chatgpt@26.1007.21434",
         "anthropic.claude-code"
       ]
     }
@@ -51,6 +54,7 @@
   "mounts": [
     "source=settings-image-gomodcache,target=/go/pkg/mod,type=volume",
     "source=settings-image-gobuildcache,target=/home/vscode/.cache/go-build,type=volume",
+    "source=settings-image-codexconfig,target=/home/vscode/.codex,type=volume",
     "source=settings-image-claudeconfig,target=/home/vscode/.claude,type=volume",
     // Keeps the gh CLI logged in across rebuilds.
     "source=settings-image-ghconfig,target=/home/vscode/.config/gh,type=volume",
