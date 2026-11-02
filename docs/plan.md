@@ -91,7 +91,7 @@ from both registries has the expected files, modes, annotations and referrer.
    with `testdata/selftest/`.
    - **Observe:** a green run on a pull request (the service registry) and on `main` (ghcr.io).
      The second invocation in the job reports `changed: false`.
-4. **2d, releases carry binaries** (built, not yet observed: no release has been cut).
+4. **2d, releases carry binaries** (done with v0.1.0, 2026-11-02).
    - Release-please cuts a **draft**; `publish-cli` runs `task dist` in the CI image
      (`linux/amd64`, `linux/arm64`, `darwin/arm64`, reproducible, plus
      `settings-image.sha256sums`), signs the checksums with cosign, attests SLSA provenance, and
@@ -100,9 +100,13 @@ from both registries has the expected files, modes, annotations and referrer.
    - Not yet: the Action's `version` input that downloads the binary instead of building it
      ([github-action.md §3](github-action.md#3-where-the-binary-comes-from)). It still builds
      from its own source, which is right for every ref, at 10–20 s.
-   - **Observe:** after the first release, the assets are on it, `sha256sum -c` and
-     `gh attestation verify` pass on a downloaded binary, it prints the release's version, and
-     `@v0` resolves to the release commit.
+   - **Observed** on v0.1.0: the assets are on the release, `sha256sum -c` and `cosign
+     verify-blob` pass on a downloaded binary, it prints `version=0.1.0`, and `v0` resolves to the
+     release commit.
+   - **SLSA attestations wait for the repository to go public:** GitHub refuses them for a private
+     repository on the organisation's plan, so `publish-cli` skips them while it is private. The
+     first v0.1.0 run failed on exactly that and left an empty draft; `workflow_dispatch` with
+     `tag: v0.1.0` finished it. That is the recovery for any draft a failed run leaves behind.
 5. **2e, the conformance corpus.** `testdata/conformance/<case>/` holds an `input/` folder, the
    output of `settings-image build --oci-layout`, and an `expected.json` (digest, tree, provenance
    or refusal). Required cases:

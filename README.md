@@ -3,10 +3,9 @@
 Build a folder of settings into a small, reproducible OCI image, and mount it next to your
 application with a Kubernetes [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/).
 
-> **Status: prototype, before its first release.** `settings-image build` and `push` work and
-> match the format's known answers, and a composite GitHub Action runs them. Releases carry CLI
-> binaries from v0.1.0; until it is out, use `ConfigButler/settings-image@main`. See
-> [docs/plan.md](docs/plan.md).
+> **Status: prototype, v0.1.0.** `settings-image build` and `push` work and match the format's
+> known answers, a composite GitHub Action runs them (`ConfigButler/settings-image@v0`), and each
+> release carries CLI binaries with a cosign-signed checksums file. See [docs/plan.md](docs/plan.md).
 
 ## Why now: Kubernetes can mount an image as a volume
 
