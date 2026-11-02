@@ -1,0 +1,34 @@
+# Pictures are plain files in the folder: they go into the image under objects/, byte for byte,
+# with no base64 and no ConfigMap size limit. The settings refer to them by path, and the
+# application reads objects/products/vanilla.png from the mounted image.
+apiVersion: shop.configbutler.ai/v1
+kind: Product
+metadata:
+  name: vanilla
+spec:
+  title: Vanilla
+  picture: products/vanilla.png
+---
+apiVersion: shop.configbutler.ai/v1
+kind: Product
+metadata:
+  name: chocolate
+spec:
+  title: Chocolate
+  picture: products/chocolate.png
+---
+apiVersion: shop.configbutler.ai/v1
+kind: Product
+metadata:
+  name: strawberry
+spec:
+  title: Strawberry
+  picture: products/strawberry.png
+---
+apiVersion: shop.configbutler.ai/v1
+kind: UserProfile
+metadata:
+  name: ada
+spec:
+  displayName: Ada
+  avatar: users/ada.svg

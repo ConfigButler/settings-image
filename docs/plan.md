@@ -130,7 +130,7 @@ page first. The questions to answer:
   default (its ignore patterns), so a folder can differ between a checkout and a Flux artifact.
   Find out which, and make the controller and the CLI agree, or document where they cannot.
 
-## Phase 4: sealed documents (prototype done)
+## Phase 4: SOPS-encrypted files (prototype done)
 
 Admit SOPS-encrypted documents and refuse plaintext where a value must be secret. The rules are in
 [format-v1.md §6](format-v1.md#6-refusals). Built ahead of order on 2026-11-02, with the example in
@@ -141,7 +141,7 @@ test-mount` decrypts the mounted file.
 - The fixtures are made once with the `sops` and `age` CLIs and committed. Add both CLIs to the
   devcontainer's `ci` stage, pinned like the other tools.
 - `--sensitive-kind group/Kind` (repeatable) on the CLI.
-- **Observe:** a pulled sealed file decrypts with `sops decrypt` and the test key; that is what
+- **Observe:** a pulled SOPS-encrypted file decrypts with `sops decrypt` and the test key; that is what
   proves it was carried byte for byte.
 
 ## Phase 5: readers (outline)

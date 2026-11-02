@@ -7,20 +7,30 @@ Each folder here is a settings folder: build one with `settings-image build exam
 |---|---|---|
 | [configmap/](configmap/) | two ConfigMaps in one file, one with `binaryData` | `objects/app.yaml`, and each key as a plain file: `files/shop-settings/settings.yaml`, `files/branding/logo.png` (decoded) |
 | [custom-resources/](custom-resources/) | custom resources in YAML and JSON, a nested folder, a file that is not KRM | everything under `objects/`, byte for byte. No `files/`: there is no ConfigMap |
-| [sops-secret/](sops-secret/) | a `Secret` sealed with SOPS, next to a plain ConfigMap | the sealed Secret under `objects/`, still encrypted; the ConfigMap's keys under `files/database/` |
+| [pictures/](pictures/) | product pictures (PNG) and a user's avatar (SVG), referred to by path from custom resources | every file under `objects/`, byte for byte: `objects/products/vanilla.png` |
+| [sops-secret/](sops-secret/) | a SOPS-encrypted `Secret`, next to a plain ConfigMap | the Secret under `objects/`, still encrypted; the ConfigMap's keys under `files/database/` |
+
+## Pictures and other binary files
+
+Any file in the folder goes into the image as it is, so a picture needs nothing special: commit it,
+and refer to it by path from the settings. That beats `binaryData` in a ConfigMap (as in
+[configmap/](configmap/)) for anything larger than a logo: no base64, and no 1 MiB object limit.
+The whole folder is limited to 10 MiB.
 
 ## Custom resources need no CRD
 
 The build does not validate against a schema. A `.yaml`, `.yml` or `.json` file must parse as a
 stream of objects, and only `apiVersion`, `kind`, `metadata.name`, `data` and `binaryData` are
-read: to find ConfigMaps, and to refuse unsealed Secrets. Everything else is carried byte for byte,
+read: to find ConfigMaps, and to refuse Secrets that are not SOPS-encrypted. Everything else is carried byte for byte,
 and the application decodes the kinds it knows.
 
-## Sealing a Secret
+## Encrypting a Secret with SOPS
 
-A `Secret` must be sealed with [SOPS](https://getsops.io), and only with an `encrypted_regex`, so
-the build can check that no value under a matched key is left in plaintext. The rules are in
-[format-v1.md §6](../docs/format-v1.md#6-refusals).
+A `Secret` must be encrypted with [SOPS](https://getsops.io). Any of SOPS's key-based rules works,
+its default included (`sops encrypt` with no rule encrypts every value); the build checks that no
+value the rule encrypts is in plaintext. The rules are in
+[format-v1.md §6](../docs/format-v1.md#6-refusals). This example uses `encrypted_regex`, so
+`metadata` stays readable:
 
 ```bash
 cd examples

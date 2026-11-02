@@ -139,7 +139,8 @@ that call `pkg/settingsimage` directly, with a fixed `Provenance` value.
 - **KRM without CRDs (maintainer):** the build does not validate against schemas, and does not
   need to for now. A custom resource is carried byte for byte; only the fields that find
   ConfigMaps and Secrets are read. Validation against CRDs could be an optional lint later.
-- **Sealed documents (format-v1.md §6) are built now**, ahead of phase 4's order, because the
+- **SOPS-encrypted files (format-v1.md §6; first called "sealed documents", see below) are built
+  now**, ahead of phase 4's order, because the
   maintainer wants SOPS supported. They stay layout `v1`: admitting more input changes no byte of
   an image v1 already built. `--sensitive-kind` came with them. The `sops` and `age` CLIs are in
   the devcontainer's `ci` stage; age has no checksum file, so its sha256 is pinned in the
@@ -154,6 +155,38 @@ that call `pkg/settingsimage` directly, with a fixed `Provenance` value.
 - **The self-test passed on GitHub**, against the service registry and against ghcr.io, with the
   same digest on both. setup-go's cache never restored with `uses: ./` (a path ending in `/./`),
   which is fixed by resolving the action's path first.
-- **Open: release-please proposes 1.0.0.** The manifest starts at `0.0.0`, and release-please's
-  first release is 1.0.0 unless told otherwise, while the docs plan a floating `v0` tag. Not
-  changed; for the maintainer.
+- **release-please proposed 1.0.0.** Settled in the third round.
+
+## Third round: aligned with SOPS and Sealed Secrets sources (2026-11-02)
+
+The maintainer pointed out that "sealed" is Sealed Secrets' word, and asked for the wording to be
+checked against both projects' sources (getsops/sops and bitnami-labs/sealed-secrets, cloned in
+`external/`).
+
+- **Wording.** Sealed Secrets owns "seal", "sealed" and "unseal" (`kubeseal`, the `SealedSecret`
+  kind; "sealed" 98 times in its README). SOPS says "encrypt", "decrypt" and "encrypted file".
+  Everything here now says **SOPS-encrypted**, and "sealed" only names Sealed Secrets.
+- **A `SealedSecret` is an ordinary custom resource** in v1: carried byte for byte, not checked.
+  Supporting it properly (say, requiring `spec.encryptedData`) is a possible later step; it is
+  safe to publish by design, being encrypted for one cluster's controller.
+- **The checks now follow SOPS's source, which changed the rules:**
+
+| Topic | Before | Now | Source |
+|---|---|---|---|
+| A file with no rule (`sops encrypt` alone) | refused: SOPS writes `unencrypted_suffix: _unencrypted` | admitted, and checked | `stores/stores.go`, `DefaultUnencryptedSuffix` |
+| `unencrypted_regex`, `encrypted_suffix`, `unencrypted_suffix` | refused | admitted: key-based, so checkable the same way | `Tree.shouldBeEncrypted` in `sops.go` |
+| `encrypted_comment_regex`, `unencrypted_comment_regex` | refused | still refused: they depend on comments, which decoding drops | same |
+| `mac_only_encrypted` | refused | still refused: the MAC leaves plaintext values unprotected | `Tree.Encrypt` |
+| Two rules at once | the first was used | refused, as SOPS refuses it | `stores/stores.go` |
+| `""` and `null` under an encrypted key | refused as plaintext | admitted: SOPS never encrypts them | `aes/cipher.go` `isEmpty`, `walkValue` |
+| A multi-document file | checked per document | checked per file: the first document's `sops` block governs all | `stores/metadata.go` `ExtractMetadata` |
+| The ciphertext format | prefix `ENC[AES256_GCM,` | SOPS's own regex, `data`, `iv`, `tag` and `type` included | `aes/cipher.go` `encre` |
+
+- **Fixtures** for every rule were made with the `sops` CLI (`testdata/sops/`), and each decrypts
+  with the test key. A comment-rule fixture shows why it stays refused: whether `token` is
+  encrypted depends on a `# sops:enc` comment.
+- **Pictures** (maintainer): `examples/pictures/` holds product pictures and an avatar, referred to
+  by path from custom resources, and `task test-mount` checks them byte for byte in the pod.
+- **Versions** (maintainer): like gitops-reverser, pre-1.0 releases bump the minor version
+  (`bump-minor-pre-major`, already set). That only applies once a 0.x release exists, so
+  `initial-version: 0.1.0` was added: the first release is 0.1.0, not 1.0.0.

@@ -45,8 +45,9 @@ echo "Pushing to ${PUSH_TO}"
 REF_CONFIGMAP="$(push examples/configmap examples/configmap)"
 REF_CRS="$(push examples/custom-resources examples/custom-resources)"
 REF_SOPS="$(push examples/sops-secret examples/sops-secret)"
+REF_PICTURES="$(push examples/pictures examples/pictures)"
 REF_EDGE="$(push edge-cases testdata/mount/edge-cases)"
-printf '  %s\n' "${REF_CONFIGMAP}" "${REF_CRS}" "${REF_SOPS}" "${REF_EDGE}"
+printf '  %s\n' "${REF_CONFIGMAP}" "${REF_CRS}" "${REF_SOPS}" "${REF_PICTURES}" "${REF_EDGE}"
 
 kubectl --context "${CONTEXT}" delete namespace "${NAMESPACE}" --ignore-not-found --wait >/dev/null
 kubectl --context "${CONTEXT}" create namespace "${NAMESPACE}" >/dev/null
@@ -72,6 +73,7 @@ spec:
         - { name: configmap, mountPath: /settings/configmap, readOnly: true }
         - { name: crs, mountPath: /settings/custom-resources, readOnly: true }
         - { name: sops, mountPath: /settings/sops-secret, readOnly: true }
+        - { name: pictures, mountPath: /settings/pictures, readOnly: true }
         - { name: edge, mountPath: /settings/edge-cases, readOnly: true }
         # A ConfigMap's files/ directory as a subPath: what an application usually mounts.
         - { name: configmap, mountPath: /etc/shop, subPath: files/shop-settings, readOnly: true }
@@ -79,13 +81,14 @@ spec:
     - { name: configmap, image: { reference: "${REF_CONFIGMAP}", pullPolicy: IfNotPresent } }
     - { name: crs, image: { reference: "${REF_CRS}", pullPolicy: IfNotPresent } }
     - { name: sops, image: { reference: "${REF_SOPS}", pullPolicy: IfNotPresent } }
+    - { name: pictures, image: { reference: "${REF_PICTURES}", pullPolicy: IfNotPresent } }
     - { name: edge, image: { reference: "${REF_EDGE}", pullPolicy: IfNotPresent } }
 EOF
 if ! kc wait --for=condition=Ready pod/settings-mount --timeout=120s >/dev/null; then
     kc describe pod settings-mount >&2
     exit 1
 fi
-echo "Pod is Ready with four image volumes"
+echo "Pod is Ready with five image volumes"
 
 echo "examples/configmap"
 check "files/ view through a subPath" same_bytes <(printf 'maxScoops: 3\ncurrency: EUR\n') /etc/shop/settings.yaml
@@ -104,7 +107,7 @@ check "no files/ view without a ConfigMap" bash -c "! kubectl --context ${CONTEX
 
 echo "examples/sops-secret"
 in_pod cat /settings/sops-secret/objects/database.secret.yaml > "${WORK}/secret.yaml"
-check "the sealed Secret byte for byte" cmp -s examples/sops-secret/database.secret.yaml "${WORK}/secret.yaml"
+check "the SOPS-encrypted Secret byte for byte" cmp -s examples/sops-secret/database.secret.yaml "${WORK}/secret.yaml"
 check "it decrypts with the test key (the MAC survived)" bash -c \
     "SOPS_AGE_KEY_FILE=testdata/sops/age-test-key.txt sops decrypt '${WORK}/secret.yaml' \
     | grep -q 'password: correct-horse-battery-staple'"
@@ -112,6 +115,11 @@ check "the plain ConfigMap beside it has its files/ view" same_bytes <(printf 'p
     /settings/sops-secret/files/database/host
 check "the Secret has no files/ view" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
     exec settings-mount -- test -e /settings/sops-secret/files/database/password"
+
+echo "examples/pictures"
+for f in products/vanilla.png products/chocolate.png products/strawberry.png users/ada.svg catalogue.yaml; do
+    check "objects/${f}" same_bytes "examples/pictures/${f}" "/settings/pictures/objects/${f}"
+done
 
 echo "edge cases"
 E=/settings/edge-cases

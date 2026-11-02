@@ -99,7 +99,7 @@ task test-mount  # a k3d cluster: mount the examples as image volumes and check 
 ```
 
 [examples/](examples/) has settings folders to try: ConfigMaps, custom resources, and a
-SOPS-sealed Secret.
+SOPS-encrypted Secret.
 
 ## License
 

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: api
+stringData:
+    # sops:enc
+    token: ENC[AES256_GCM,data:4ZNcHC+5,iv:rM8cjoTNG+2kuwHXA13Lleu1nOcb6TEjKIFaEB+4dpk=,tag:XBXw2BjuZVV9gzdJVf/l1A==,type:str]
+    plain: visible
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBJVEI5U3pEN056UjZyZEFq
+            TVcxV0YrQ0pPdlBQdXdBTG5uWXdrNWl3aUhjCmRpNDJLZkd0Y29mS1J1L0N0M21O
+            TFM4YTFSL2lxbWorRkJ4QjIyTlhkN2cKLS0tIFRFOHk4OWRTc1RLbEQvSmYwalRD
+            b2xOM2QwbjZCcFpsZ1o4TEc1Z1Vqd0UK6eOpLILQq5BqjCIvlGiaEdX7hRKDW+gU
+            takQ2IWWqIguThc8UromY7asg3Uh5P8Rz3IoWRdfaDsVBmC3Qe3CFw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age19qudjthka6ekyd3wxfkwg443n28lwdnx75jelx8p24j8gv6rmdwqlez4q3
+    encrypted_comment_regex: sops:enc
+    lastmodified: "2026-11-02T18:02:06Z"
+    mac: ENC[AES256_GCM,data:M5Gr/epF6XTgVDrgl+VevwcbLVbiq6bkPA3lTwIMcP3zkWIhFwd+gHhm4q324RVrbHOsAP29269NyK3S6FvdYJc7mDsnkVyc1ngQH+aFlq+t//xWbmLXjiSkseYXjHA4kjaCOC1hRbNI124LycbF/HKN9Tx7k2FDivnKmAy2i2k=,iv:2LcxXDZGI+60ZHmJqfdtbCO6J0KWmxFbsrKR7dPWc8w=,tag:ZN9CJANu4eK0cuHt+/Qrag==,type:str]
+    version: 3.13.3

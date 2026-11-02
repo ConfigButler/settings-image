@@ -35,7 +35,7 @@ Two views, both on by default. A writer may switch `files/` off.
 
 | Path | Content |
 |---|---|
-| `objects/<rel>` | every input file, **byte for byte**. Nothing is re-serialised, so a sealed (SOPS) document keeps its MAC valid |
+| `objects/<rel>` | every input file, **byte for byte**. Nothing is re-serialised, so a SOPS-encrypted file keeps its MAC valid |
 | `files/<name>/<key>` | for each `ConfigMap` document named `<name>`: one file per `data` key (the string's bytes), and one per `binaryData` key (base64-decoded) |
 
 A `ConfigMap` is a document with `apiVersion: v1` and `kind: ConfigMap`; `metadata.namespace` is
@@ -114,7 +114,7 @@ offending path and a reason. Every one of these is refused:
 | an **empty** result | publishing it would roll every consumer to "no settings" |
 | a `.yaml`/`.yml`/`.json` file that does not parse | an unparseable file is where a Secret would hide |
 | two archive entries for one path, or a path that is both a file and a directory | not a folder |
-| a document of `kind: Secret` that is not sealed (below) | a registry is not a secret store |
+| a document of `kind: Secret` that is not SOPS-encrypted (below) | a registry is not a secret store |
 | an unsafe `files/` name or key, or two documents writing one `files/` path | §3 |
 | a `ConfigMap` `data` value that is not a string, or `binaryData` that is not base64 | the apiserver refuses it too |
 
@@ -122,23 +122,34 @@ Known limit of v1: a JSON or YAML file whose top level is not a mapping (a list,
 decode, and is refused. Plain non-KRM settings files with those extensions hit this. A later layout
 may relax it.
 
-**Sealed documents (SOPS).** A document with a top-level `sops:` key is admitted only when it is
-sealed this way, and refused otherwise:
+**SOPS-encrypted files.** A `.yaml`/`.yml`/`.json` file with a top-level `sops` key is
+[SOPS](https://getsops.io)-encrypted. The checks follow SOPS's own source (getsops/sops), which
+treats the file, not the document, as the unit: it writes the same `sops` block into every
+document and reads it from the first. Such a file is admitted only when:
 
-- `sops.encrypted_regex` is set, and every value under a key it matches, at any depth, is
-  `ENC[AES256_GCM,…]`;
-- at least one value is encrypted;
-- `sops.mac` is present (`ENC[AES256_GCM,…]`);
-- no other SOPS rule is set (`encrypted_suffix`, `unencrypted_suffix`, `unencrypted_regex`,
-  `encrypted_comment_regex`, `unencrypted_comment_regex`, `mac_only_encrypted`). Each is refused
-  by name: only `encrypted_regex` can be checked to have left nothing in plaintext.
+- the first document has the `sops` block, as a mapping, with a MAC (`mac: ENC[AES256_GCM,…]`);
+- it uses at most one key-based rule: `encrypted_regex`, `unencrypted_regex`, `encrypted_suffix`
+  or `unencrypted_suffix`. None means SOPS's default, `unencrypted_suffix: _unencrypted`, which
+  SOPS itself writes into the file;
+- every value that rule encrypts is `ENC[AES256_GCM,data:…,iv:…,tag:…,type:…]`, with the rule
+  applied to the value's key path exactly as SOPS does (`Tree.shouldBeEncrypted`). An empty
+  string and `null` are exempt: SOPS never encrypts them;
+- at least one value is encrypted.
 
-A sealed `Secret` is admitted. A kind on a writer-supplied "sensitive kinds" list (`group/Kind`, or
-`Kind` for the core group) that arrives unsealed is refused. A sealed document has no `files/`
-view, and with `files/` on, a sealed `ConfigMap` is refused, because one value per file cannot
-carry its MAC. The writer never decrypts anything: the document is carried byte for byte under
-`objects/`, so it decrypts after the pull. Admitting sealed documents changes no byte of any image
-that v1 already built, so it is still layout `v1`.
+Refused by name: `encrypted_comment_regex` and `unencrypted_comment_regex`, because what they
+encrypt depends on comments, which decoding does not keep; and `mac_only_encrypted`, because its
+MAC leaves the plaintext values unprotected.
+
+A `Secret` must be in a SOPS-encrypted file, and so must a kind on the writer's "sensitive kinds"
+list (`group/Kind`, or `Kind` for the core group). A SOPS-encrypted file has no `files/` view, and
+with `files/` on, a SOPS-encrypted `ConfigMap` is refused, because one value per file cannot carry
+the MAC. The writer never decrypts anything: the file is carried byte for byte under `objects/`,
+so it decrypts after the pull. Admitting SOPS-encrypted files changes no byte of any image that v1
+already built, so it is still layout `v1`.
+
+A [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) `SealedSecret`
+(`bitnami.com/v1alpha1`) is a different mechanism: encrypted for one cluster's controller, which
+unseals it into a `Secret`. v1 does not check it; it is an ordinary custom resource.
 
 ## 7. Provenance: a referrer, not part of the image
 

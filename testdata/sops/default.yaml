@@ -1,0 +1,28 @@
+apiVersion: ENC[AES256_GCM,data:Yqw=,iv:IaodTfXMGLx3A3/ArF7017uUut7IU5KK9gzJhkpP198=,tag:Oej28WcbTkGHcahnWSj5dA==,type:str]
+kind: ENC[AES256_GCM,data:oQWKj//i,iv:HserZKr6wDTluhxP4fF7Yq2IV5GhmOteinWmf0/YykA=,tag:aEoaHofTNGsDiZwjBbzjQA==,type:str]
+metadata:
+    name: ENC[AES256_GCM,data:jXfD,iv:PJQPAY2J/pTIq10uqRj2A6txGjUUxAoSnwHrx/AYYOg=,tag:QpzFf8XGUB2nt5z2Ze3ubg==,type:str]
+type: ENC[AES256_GCM,data:67ia84DI,iv:Ho/wno9jcyndZ5n5+hg6WVBEi2HQGjjvboEjaHMsI3w=,tag:q8IsomU6Ul/aHPyCcf4Ejw==,type:str]
+stringData:
+    token: ENC[AES256_GCM,data:vJE7XCzH,iv:FRBtU5heDVvSSa8ISY6o/eVhsMQoDcZ+O3yQhY72jb8=,tag:n/nySPpHw60zQTXJzm5UYA==,type:str]
+    empty: ""
+    note_unencrypted: visible on purpose
+    #ENC[AES256_GCM,data:9HwtLmYguR3EyxkfEpgWBn03Pgytxg==,iv:Sfm39Y9NqgvKbEFTLpjfyJHSY24rIkMntsTBSDuNV/E=,tag:InU9hew6enrxHXNgEOb7Pg==,type:comment]
+    list:
+        - ENC[AES256_GCM,data:Te3h,iv:xEmfefgu3g9LoFKW3hHuGTfGznPwIyxLL02I0JscFIg=,tag:9QAV1Akzx7sdz+40Yr5t3A==,type:str]
+        - ENC[AES256_GCM,data:kwRh,iv:aSHE7b1XlGLSe9zUk1wjAo/BfP7eow1qS6nv6EYTwI4=,tag:pUt7vrFyUwvuaMz3rPB1Dw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBJNEFESWJjeUl6cDJJS25W
+            V01FWFBORzFGcFVPQ3RQVkMvVHpJUGk0YW5vCmQvZGp5eVJndERTb3lTWlpRbzRn
+            dW1BaXRqK3FiMnhkc0Jzc0RxQU9TaXcKLS0tIHBmUEE4M2NTcnZmQXlCWDQ3ZzBj
+            MHEwTWYwT1E3NXAwZzlIQ2o5ZTlHdzAKb08c+3MQEyidKikuzG4lfDBtacZqa/Hc
+            XFA9DzSuXclHlNlBQjoEB0rjzGzaDxlRsK9+lME1fY0keHG7UctcAw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age19qudjthka6ekyd3wxfkwg443n28lwdnx75jelx8p24j8gv6rmdwqlez4q3
+    lastmodified: "2026-11-02T18:01:47Z"
+    mac: ENC[AES256_GCM,data:fvNxTzVfR19z/GTmFoUpwwWgPWiO4vNk6XMkYWsaGYugXYfjdRoUTB1BEFa+3j4QRbrokfphVd0mtonwGbi9wkCHSkr7epEDYROK+XUZwbmPoZnHww/xhXWc37VsaLJdnHbuf7mPHhUmdaGK4Ft/SCO+eoBlEvDrVaW0I98UOqI=,iv:StWTNLpoDJszGg3V7lzZqFpAZhNhxewwI5+kcSjwwCA=,tag:8CQ1sPpnuSoSPTeNKmGe4Q==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

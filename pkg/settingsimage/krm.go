@@ -52,23 +52,41 @@ func configMapFiles(files map[string][]byte, opts RenderOptions) (map[string][]b
 
 	views := map[string][]byte{}
 	for _, p := range paths {
-		docs, err := decodeAll(p, files[p])
-		if err != nil {
+		if err := parseFile(views, p, files[p], opts); err != nil {
 			return nil, err
-		}
-		for _, doc := range docs {
-			if err := checkDocument(p, doc, opts); err != nil {
-				return nil, err
-			}
-			if isSealed(doc) {
-				continue // a sealed document has no files/ view: its values are ciphertext
-			}
-			if err := addConfigMap(views, p, doc); err != nil {
-				return nil, err
-			}
 		}
 	}
 	return views, nil
+}
+
+// parseFile checks one parsed file, and adds its ConfigMaps' files/ view unless it is
+// SOPS-encrypted.
+func parseFile(views map[string][]byte, p string, b []byte, opts RenderOptions) error {
+	docs, err := decodeAll(p, b)
+	if err != nil {
+		return err
+	}
+	rule, err := sopsMetadata(p, docs)
+	if err != nil {
+		return err
+	}
+	if rule != nil {
+		if err := checkSOPSEncrypted(p, docs, rule); err != nil {
+			return err
+		}
+	}
+	for _, doc := range docs {
+		if err := checkDocument(p, doc, rule != nil, opts); err != nil {
+			return err
+		}
+		if rule != nil {
+			continue // a SOPS-encrypted file has no files/ view: its values are ciphertext
+		}
+		if err := addConfigMap(views, p, doc); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func isParsed(p string) bool {
@@ -100,26 +118,25 @@ func decodeAll(p string, b []byte) ([]document, error) {
 	}
 }
 
-// checkDocument applies the sealing rules: a SOPS document must be sealed as v1 admits; a
-// Secret, or a sensitive kind, must be sealed; and a sealed ConfigMap cannot have a files/ view,
-// because one value per file cannot carry the MAC.
-func checkDocument(p string, doc document, opts RenderOptions) error {
+// checkDocument applies the encryption rules: a Secret, or a sensitive kind, must be in a
+// SOPS-encrypted file; and a SOPS-encrypted ConfigMap cannot have a files/ view, because one
+// value per file cannot carry the MAC. A Sealed Secrets SealedSecret is an ordinary custom
+// resource here.
+func checkDocument(p string, doc document, sopsEncrypted bool, opts RenderOptions) error {
 	kind := kindKey(doc)
-	if isSealed(doc) {
-		if err := checkSealed(p, doc); err != nil {
-			return err
-		}
+	if sopsEncrypted {
 		if kind == "ConfigMap" && !opts.NoFiles {
-			return refuse(p, "a sealed ConfigMap cannot have a files/ view; seal a Secret, or use --no-files")
+			return refuse(p, "a SOPS-encrypted ConfigMap cannot have a files/ view; encrypt a Secret instead, "+
+				"or use --no-files")
 		}
 		return nil
 	}
 	if kind == "Secret" {
-		return refuse(p, "an unsealed Secret; a registry is not a secret store (seal it with SOPS)")
+		return refuse(p, "a Secret that is not SOPS-encrypted; a registry is not a secret store")
 	}
 	for _, sensitive := range opts.SensitiveKinds {
 		if kind == sensitive {
-			return refuse(p, "%s is a sensitive kind and arrives unsealed (seal it with SOPS)", kind)
+			return refuse(p, "%s is a sensitive kind and is not SOPS-encrypted", kind)
 		}
 	}
 	return nil

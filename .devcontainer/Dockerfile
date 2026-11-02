@@ -59,7 +59,7 @@ RUN apt-get update \
 # SOPS_VERSION -> https://github.com/getsops/sops/releases
 # AGE_VERSION -> https://github.com/FiloSottile/age/releases (no checksum file: AGE_SHA256 is
 #   the sha256 of age-${AGE_VERSION}-linux-amd64.tar.gz, recorded on first download)
-#   sops and age make the sealed fixtures and decrypt what the test cluster mounted.
+#   sops and age make the SOPS fixtures and decrypt what the test cluster mounted.
 # NODE_MAJOR -> https://github.com/nodejs/node/releases (a current LTS line)
 # MARKDOWNLINT_CLI2_VERSION -> https://www.npmjs.com/package/markdownlint-cli2?activeTab=versions
 ENV PATH="/go/bin:/usr/local/go/bin:${PATH}" \

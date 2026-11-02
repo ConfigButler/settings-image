@@ -100,7 +100,7 @@ func parseBuildFlags(push bool, args []string, stderr io.Writer) (*buildFlags, e
 	fs.StringVar(&f.branchTag, "branch-tag", "", "add the sanitised branch tag, pushed last")
 	fs.StringVar(&f.source, "source", "", "the source repository URL")
 	fs.BoolVar(&f.noFiles, "no-files", false, "leave out the files/ view")
-	fs.Var(&f.sensitive, "sensitive-kind", "a kind that must arrive sealed with SOPS, as group/Kind (repeatable)")
+	fs.Var(&f.sensitive, "sensitive-kind", "a kind that must be SOPS-encrypted, as group/Kind (repeatable)")
 	fs.BoolVar(&f.noProvenance, "no-provenance", false, "build no referrer, and skip Git entirely")
 	fs.BoolVar(&f.allowDirty, "allow-dirty", false, "build a folder with uncommitted changes, without provenance")
 	fs.BoolVar(&f.allowShallow, "allow-shallow", false, "accept a shallow clone; provenance names HEAD")

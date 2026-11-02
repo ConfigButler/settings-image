@@ -26,8 +26,8 @@ type Tree map[string][]byte
 type RenderOptions struct {
 	// NoFiles leaves out the files/ view.
 	NoFiles bool
-	// SensitiveKinds are kinds that must arrive sealed with SOPS, as "group/Kind", or "Kind" for
-	// the core group. A Secret must always be sealed.
+	// SensitiveKinds are kinds that must arrive SOPS-encrypted, as "group/Kind", or "Kind" for
+	// the core group. A Secret must always be SOPS-encrypted.
 	SensitiveKinds []string
 }
 

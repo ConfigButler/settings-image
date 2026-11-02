@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <title>Ada's avatar</title>
+  <circle cx="48" cy="48" r="46" fill="#f4a6c0"/>
+  <circle cx="48" cy="38" r="17" fill="#fff4ec"/>
+  <path d="M16 82c6-18 18-26 32-26s26 8 32 26" fill="#fff4ec"/>
+  <text x="48" y="44" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#7b4a2e">A</text>
+</svg>
