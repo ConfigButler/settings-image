@@ -32,7 +32,7 @@ func ValidateTag(tag string) error {
 	return nil
 }
 
-// BranchTag sanitises a branch name into a tag (format-v1.md §8): lowercased, every character
+// BranchTag sanitises a branch name into a tag (format-v2.md §10): lowercased, every character
 // outside [a-z0-9_.-] replaced by "-", leading "." and "-" removed, at most 128 characters, and
 // "branch" if nothing is left. "feature/Card" becomes "feature-card".
 func BranchTag(branch string) string {

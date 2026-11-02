@@ -15,10 +15,10 @@ import (
 
 const (
 	dirMode  = 0o755
-	fileMode = 0o644 // forced: an image volume is not mounted noexec (format-v1.md §4)
+	fileMode = 0o644 // forced: an image volume is not mounted noexec (format-v2.md §6)
 )
 
-// layer is the tree as format-v1.md §4's deterministic tar+gzip.
+// layer is the tree as format-v2.md §6's deterministic tar+gzip.
 type layer struct {
 	tar  []byte // uncompressed; its sha256 is the diffID
 	gzip []byte // its sha256 is the layer digest
@@ -56,7 +56,7 @@ func buildLayer(tree Tree) (*layer, error) {
 }
 
 // layerEntries is every path of the layer, files and their parent directories, sorted by the
-// plain path (format-v1.md §4).
+// plain path (format-v2.md §6).
 func layerEntries(tree Tree) ([]string, map[string]bool) {
 	isDir := map[string]bool{}
 	for p := range tree {

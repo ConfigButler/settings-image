@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package settingsimage builds a folder of settings into a settings image, as specified in
-// docs/format-v1.md, and pushes it.
+// docs/format-v2.md, and pushes it.
 //
 // The steps are separate so that each can be tested and reused:
 //

@@ -14,7 +14,7 @@ import (
 	"oras.land/oras-go/v2/content/oci"
 )
 
-// The format-v1.md §9 "configmap" case: the digest a commit of this folder must give.
+// The format-v2.md §11 "configmap" case: the digest a commit of this folder must give.
 const (
 	knownConfigMap = `apiVersion: v1
 kind: ConfigMap
@@ -25,10 +25,10 @@ data:
     maxScoops: 3
 `
 	knownSource = "https://github.com/ConfigButler/k8s-trail"
-	knownDigest = "sha256:c5edc2c3ef1c35d2a810d55d6ce161a30bf5a9e3337ff560a7e3ae6eabf6516d"
+	knownDigest = "sha256:80b524374fdf0db1088308fe2941e6399c50b8d268891a4cd9e2b4e1775c88cd"
 )
 
-// repo is a scratch Git repository with configs/shop holding the known ConfigMap, committed.
+// repo is a scratch Git repository with configs/shop/resources holding the known ConfigMap, committed.
 type repo struct {
 	t   *testing.T
 	dir string
@@ -52,7 +52,7 @@ func newRepo(t *testing.T) *repo {
 	r := &repo{t: t, dir: t.TempDir()}
 	r.git("init", "-q", "-b", "main")
 	r.git("remote", "add", "origin", "git@github.com:ConfigButler/k8s-trail.git")
-	r.write("configs/shop/configmap.yaml", knownConfigMap)
+	r.write("configs/shop/resources/configmap.yaml", knownConfigMap)
 	r.write("README.md", "hello\n")
 	r.commit("feat: three scoops")
 	return r
@@ -139,7 +139,7 @@ func TestBuildFromGit(t *testing.T) {
 	}
 
 	// A commit to the folder moves the commit and the referrer, not necessarily the digest.
-	r.write("configs/shop/notes.txt", "more\n")
+	r.write("configs/shop/raw/notes.txt", "more\n")
 	next := r.commit("feat: notes")
 	moved := cliJSON(t, "build", r.shop())
 	if *moved.Commit != next || moved.Digest == res.Digest {
@@ -170,7 +170,7 @@ func TestBuildRefusals(t *testing.T) {
 		{
 			name: "dirty: modified",
 			setup: func(r *repo) []string {
-				r.write("configs/shop/configmap.yaml", knownConfigMap+"# edit\n")
+				r.write("configs/shop/resources/configmap.yaml", knownConfigMap+"# edit\n")
 				return []string{"build", r.shop()}
 			},
 			wantIn: "uncommitted",
@@ -178,7 +178,7 @@ func TestBuildRefusals(t *testing.T) {
 		{
 			name: "dirty: untracked",
 			setup: func(r *repo) []string {
-				r.write("configs/shop/new.txt", "x")
+				r.write("configs/shop/raw/new.txt", "x")
 				return []string{"build", r.shop()}
 			},
 			wantIn: "uncommitted",
@@ -186,11 +186,11 @@ func TestBuildRefusals(t *testing.T) {
 		{
 			name: "secret",
 			setup: func(r *repo) []string {
-				r.write("configs/shop/s.yaml", "apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n")
+				r.write("configs/shop/resources/s.yaml", "apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n")
 				r.commit("oops")
 				return []string{"build", r.shop()}
 			},
-			wantIn: "s.yaml",
+			wantIn: "resources/s.yaml",
 		},
 		{
 			name: "shallow clone",
@@ -234,7 +234,7 @@ func TestBuildRefusals(t *testing.T) {
 
 func TestBuildEscapes(t *testing.T) {
 	r := newRepo(t)
-	r.write("configs/shop/new.txt", "x")
+	r.write("configs/shop/raw/new.txt", "x")
 	dirty := cliJSON(t, "build", r.shop(), "--allow-dirty")
 	if dirty.Provenance != nil || dirty.Commit != nil || len(dirty.Tags) != 0 {
 		t.Errorf("--allow-dirty: %+v, want no provenance and no sha- tag", dirty)
@@ -248,7 +248,11 @@ func TestBuildEscapes(t *testing.T) {
 	}
 
 	plain := t.TempDir()
-	if err := os.WriteFile(filepath.Join(plain, "configmap.yaml"), []byte(knownConfigMap), 0o600); err != nil {
+	if err := os.Mkdir(filepath.Join(plain, "resources"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cm := filepath.Join(plain, "resources", "configmap.yaml")
+	if err := os.WriteFile(cm, []byte(knownConfigMap), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	res := cliJSON(t, "build", plain, "--no-provenance", "--source", knownSource)
@@ -297,7 +301,7 @@ func TestBuildUsage(t *testing.T) {
 func TestBuildSensitiveKind(t *testing.T) {
 	r := newRepo(t)
 	code, _, stderr := cli(t, "build", r.shop(), "--sensitive-kind", "ConfigMap")
-	if code != exitRefused || !strings.Contains(stderr, "sensitive") {
+	if code != exitRefused || !strings.Contains(stderr, "ConfigMap shop-settings is not SOPS-encrypted") {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 }

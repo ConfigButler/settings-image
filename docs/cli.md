@@ -2,7 +2,7 @@
 
 _Design for phase 2 ([plan.md](plan.md)). The CLI is what the GitHub Action
 ([github-action.md](github-action.md)) runs, and what a person runs by hand. The bytes it writes
-are [format-v1.md](format-v1.md)'s; this page is only the interface._
+are [format-v2.md](format-v2.md)'s; this page is only the interface._
 
 ## 1. Commands
 
@@ -18,7 +18,7 @@ settings-image version
   directory (oras-go's `oci.Store`) holding the image and its provenance, tagged as `push` would.
   A refusal is reported exactly as `push` reports it. This is the dry run, and how the conformance
   corpus is written.
-- **`push`** does `build` and then pushes, in [format-v1.md §8](format-v1.md#8-tags-and-pushing-in-order)'s
+- **`push`** does `build` and then pushes, in [format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)'s
   order.
 - **`version`** prints the build (exists).
 
@@ -28,10 +28,9 @@ settings-image version
 |---|---|---|---|
 | `--repository <host/path>` | | required | where to push, without a tag: `ghcr.io/configbutler/card-reveal-config` |
 | `--tag <tag>` (repeatable) | yes | yes | an extra tag. Must be a valid OCI tag; refused otherwise, never rewritten |
-| `--branch-tag <branch>` | yes | yes | add the sanitised branch tag ([format-v1.md §8](format-v1.md#8-tags-and-pushing-in-order)); pushed last |
+| `--branch-tag <branch>` | yes | yes | add the sanitised branch tag ([format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)); pushed last |
 | `--source <url>` | yes | yes | the repository URL for `org.opencontainers.image.source` and provenance; overrides detection (§3) |
-| `--no-files` | yes | yes | leave out the `files/` view |
-| `--sensitive-kind <group/Kind>` (repeatable) | yes | yes | a kind that must be SOPS-encrypted ([format-v1.md §6](format-v1.md#6-refusals)); `Kind` alone for the core group. A `Secret` must always be SOPS-encrypted |
+| `--sensitive-kind <group/Kind>` (repeatable) | yes | yes | a kind under `resources/` that must be SOPS-encrypted like a `Secret` ([format-v2.md §4](format-v2.md#secrets)); `Kind` alone for the core group. A `Secret` must always be SOPS-encrypted. Whether a ConfigMap becomes files is not a flag: it is an annotation on the ConfigMap ([format-v2.md §5](format-v2.md#5-configmaps-become-files)) |
 | `--no-provenance` | yes | yes | build no referrer and no `sha-` tag, and skip Git entirely (also allows a folder outside Git); the source then comes from `--source` or `GITHUB_*` only |
 | `--allow-dirty` | yes | yes | build a folder with uncommitted changes; implies no provenance and no `sha-` tag |
 | `--allow-shallow` | yes | yes | accept a shallow clone (§3); provenance then names HEAD and says so in a warning |
@@ -85,8 +84,8 @@ Progress and warnings go to **stderr**. With `--json`, **stdout** carries exactl
 ```json
 {
   "repository": "ghcr.io/configbutler/card-reveal-config",
-  "digest": "sha256:c5edc2c3…",
-  "reference": "ghcr.io/configbutler/card-reveal-config@sha256:c5edc2c3…",
+  "digest": "sha256:80b52437…",
+  "reference": "ghcr.io/configbutler/card-reveal-config@sha256:80b52437…",
   "tags": ["sha-0123456", "main"],
   "provenance": "sha256:8962065a…",
   "commit": "0123456789abcdef0123456789abcdef01234567",
@@ -109,7 +108,7 @@ Without `--json`, stdout carries only the `reference`, so `ref=$(settings-image 
 | 0 | built (and pushed), or nothing to do |
 | 1 | an error that a retry might fix: network, registry, Git |
 | 2 | usage: unknown command or flag, missing argument |
-| 3 | **refused**: the folder breaks a rule of [format-v1.md §6](format-v1.md#6-refusals), or a tag is invalid, or the folder is dirty, outside Git (without `--no-provenance`), or the clone shallow. Retrying cannot help; the message names the path |
+| 3 | **refused**: the folder breaks a rule of [format-v2.md §8](format-v2.md#8-refusals), or a tag is invalid, or the folder is dirty, outside Git (without `--no-provenance`), or the clone shallow. Retrying cannot help; the message names the path |
 
 ## 7. Not in the CLI
 

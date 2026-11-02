@@ -51,7 +51,7 @@ The root is where the Marketplace requires it, and it lets a workflow say
 | `repository` | required | `--repository` |
 | `branch-tag` | `${{ github.ref_name }}` | `--branch-tag`. Set it to `''` for none |
 | `tags` | `''` | one `--tag` per line |
-| `files` | `'true'` | `--no-files` when `'false'` |
+| `sensitive-kinds` | `''` | one `--sensitive-kind` per line |
 | `provenance` | `'true'` | `--no-provenance` when `'false'` |
 | `username` | `${{ github.actor }}` | `SETTINGS_IMAGE_USERNAME` |
 | `password` | `${{ github.token }}` | `SETTINGS_IMAGE_PASSWORD`. When it is `''`, neither variable is set and the Docker config applies, as `docker/login-action` left it: set `password: ''` for a registry other than ghcr.io |

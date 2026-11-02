@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Checks for SOPS-encrypted files (format-v1.md §6), aligned with getsops/sops: the same
+// Checks for SOPS-encrypted files (format-v2.md §4), aligned with getsops/sops: the same
 // metadata keys (stores/stores.go), the same rule for which values a file encrypts
 // (Tree.shouldBeEncrypted in sops.go), and the same ciphertext format (aes/cipher.go). The
 // writer never decrypts anything.
@@ -198,13 +198,4 @@ func sortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// kindKey is how a sensitive kind is named: "group/Kind", or "Kind" for the core group.
-func kindKey(doc document) string {
-	group, _, hasGroup := strings.Cut(doc.str("apiVersion"), "/")
-	if !hasGroup {
-		return doc.str("kind")
-	}
-	return group + "/" + doc.str("kind")
 }

@@ -1,0 +1,32 @@
+# Three ConfigMaps in one file. Each key becomes a plain file under configmaps/<name>/, unless
+# the ConfigMap is annotated settings-image.configbutler.ai/files: "false".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-settings
+data:
+  settings.yaml: |
+    maxScoops: 3
+    currency: EUR
+  welcome.txt: |
+    Welcome to the ice cream shop!
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: branding
+data:
+  colour: "#f4a6c0"
+binaryData:
+  # A 1x1 PNG: binaryData is base64-decoded into configmaps/branding/logo.png.
+  logo.png: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
+---
+# Stays a resource only: carried under resources/, with no configmaps/feature-flags/ files.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: feature-flags
+  annotations:
+    settings-image.configbutler.ai/files: "false"
+data:
+  waffle-cones: "true"

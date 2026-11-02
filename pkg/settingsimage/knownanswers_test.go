@@ -9,7 +9,7 @@ import (
 	"github.com/ConfigButler/settings-image/pkg/settingsimage"
 )
 
-// The known answers of docs/format-v1.md §9. A mismatch is a bug, or a new layout version.
+// The known answers of docs/format-v2.md §11. A mismatch is a bug, or a new layout version.
 
 const knownSource = "https://github.com/ConfigButler/k8s-trail"
 
@@ -48,19 +48,19 @@ func knownAnswers() []knownAnswer {
 	return []knownAnswer{
 		{
 			name:      "configmap",
-			folder:    fstest.MapFS{"configmap.yaml": {Data: []byte(configMapYAML)}},
-			wantTree:  []string{"files/shop-settings/settings.yaml", "objects/configmap.yaml"},
-			diffID:    "sha256:a754f5cb0b39e974c519c04b2bbb3663a2bad2c003f6cdd43aca29c199db9575",
-			layer:     "sha256:d85cf97c694d719efd32a6d8b4b73d67ad464cb222cb747ee69e18bdbbbb7d4a",
-			layerSize: 254,
-			config:    "sha256:f75f1a93569b199706fc140e4b1f735279e124d1bc56c013ef9ae10303fa0766",
-			manifest:  "sha256:c5edc2c3ef1c35d2a810d55d6ce161a30bf5a9e3337ff560a7e3ae6eabf6516d",
+			folder:    fstest.MapFS{"resources/configmap.yaml": {Data: []byte(configMapYAML)}},
+			wantTree:  []string{"configmaps/shop-settings/settings.yaml", "resources/configmap.yaml"},
+			diffID:    "sha256:05e74870873a10c8a89950c4a7fd2bd55ac48aaaa311060c4da95f0eb56ba5ce",
+			layer:     "sha256:8a76316fa9647d30e23e8b1d2cd2004d426a13136a2df028766efd609fa61705",
+			layerSize: 257,
+			config:    "sha256:2880ab7eaf378f9129049468d3e8c515eb108720d64169c35f297c35ef675169",
+			manifest:  "sha256:80b524374fdf0db1088308fe2941e6399c50b8d268891a4cd9e2b4e1775c88cd",
 			wantManifestBytes: `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
 				`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
-				`"digest":"sha256:f75f1a93569b199706fc140e4b1f735279e124d1bc56c013ef9ae10303fa0766","size":151},` +
+				`"digest":"sha256:2880ab7eaf378f9129049468d3e8c515eb108720d64169c35f297c35ef675169","size":151},` +
 				`"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip",` +
-				`"digest":"sha256:d85cf97c694d719efd32a6d8b4b73d67ad464cb222cb747ee69e18bdbbbb7d4a","size":254}],` +
-				`"annotations":{"ai.configbutler.settings-image.layout":"v1",` +
+				`"digest":"sha256:8a76316fa9647d30e23e8b1d2cd2004d426a13136a2df028766efd609fa61705","size":257}],` +
+				`"annotations":{"ai.configbutler.settings-image.layout":"v2",` +
 				`"org.opencontainers.image.created":"1970-01-01T00:00:00Z",` +
 				`"org.opencontainers.image.source":"https://github.com/ConfigButler/k8s-trail"}}`,
 			manifestSize: 598,
@@ -78,21 +78,21 @@ func knownAnswers() []knownAnswer {
 				`"path":"configs/shop","ref":"refs/heads/main","repository":"https://github.com/ConfigButler/k8s-trail",` +
 				`"subject":"feat: three scoops"}`,
 			provenanceBlob: "sha256:ce56f1d41b61539fe3ee169c1c23ff7edf39a70cc81d948789cf55d7a351bdae",
-			referrer:       "sha256:8962065a29e9443d5e12b28da691cd13c85799980b12fed477507b1bce20d682",
+			referrer:       "sha256:1ba0abbf99d335ce87cdc1c188679d4aa51b6f44c0956287c83fc1baa5a934cb",
 			referrerSize:   748,
 		},
 		{
 			name: "nested",
 			folder: fstest.MapFS{
-				"order.yaml":        {Data: []byte(orderYAML)},
-				"sub/dir/notes.txt": {Data: []byte("plain text\n")},
+				"resources/order.yaml":  {Data: []byte(orderYAML)},
+				"raw/sub/dir/notes.txt": {Data: []byte("plain text\n")},
 			},
-			wantTree:     []string{"objects/order.yaml", "objects/sub/dir/notes.txt"},
-			diffID:       "sha256:3be4c2cddd800adbbde12d51f6c8edb8736e3560209faf8f605d5ae11be1a0c5",
-			layer:        "sha256:b05f2fb88911ea5f7e96824ad041f59f28c9eb7183c7efda95303fa2832436c3",
-			layerSize:    266,
-			config:       "sha256:c6ddd5af0df19340fac591cf1abff9b4073c1220ac5afeda16b12959d3449bc2",
-			manifest:     "sha256:68b9a5c104a4bbdf9ffcc3762f0aa3a63c9519766d48430ce3e53d157fa694db",
+			wantTree:     []string{"raw/sub/dir/notes.txt", "resources/order.yaml"},
+			diffID:       "sha256:5898df62870752913ecb4012abf516466a47cfb84f197b53fd09c1a26283f557",
+			layer:        "sha256:efca61f147c9e742bd7618c9f284a2c5669d71442e5a02e9ddcfa899b8e9832c",
+			layerSize:    274,
+			config:       "sha256:4cf20694c2ae0fd5cb398148251aded045c87ef51233732ae077661a27d4b982",
+			manifest:     "sha256:6101f3d18cd146af08b06eab924a2fa4ecc411e09c3e7a0883118e9b9b9e101b",
 			manifestSize: 598,
 		},
 	}

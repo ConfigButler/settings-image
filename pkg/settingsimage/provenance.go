@@ -20,7 +20,7 @@ const (
 	ProvenanceLayerMediaType = "application/vnd.configbutler.settings-image.provenance.layer.v1+json"
 )
 
-// Provenance is the per-commit record attached to an image as an OCI referrer (format-v1.md §7).
+// Provenance is the per-commit record attached to an image as an OCI referrer (format-v2.md §9).
 // Fields are declared in key order, so the JSON comes out with its keys sorted. An empty field is
 // omitted.
 type Provenance struct {

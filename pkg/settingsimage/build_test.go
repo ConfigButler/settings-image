@@ -24,11 +24,11 @@ import (
 // The layer holds every parent directory explicitly, sorted, with forced modes and no times.
 func TestLayerShape(t *testing.T) {
 	tree := settingsimage.Tree{
-		"objects/b.txt":    []byte("b"),
-		"objects/a-b/x":    []byte("x"),
-		"objects/a/run.sh": []byte("#!/bin/sh\n"),
-		"objects/" + strings.Repeat("long/", 30) + "deep.txt": []byte("deep"),
-		"objects/ünïcode.txt":                                 []byte("u"),
+		"raw/b.txt":    []byte("b"),
+		"raw/a-b/x":    []byte("x"),
+		"raw/a/run.sh": []byte("#!/bin/sh\n"),
+		"raw/" + strings.Repeat("long/", 30) + "deep.txt": []byte("deep"),
+		"raw/ünïcode.txt": []byte("u"),
 	}
 	img, err := settingsimage.Build(t.Context(), tree, settingsimage.BuildOptions{})
 	if err != nil {
@@ -39,7 +39,7 @@ func TestLayerShape(t *testing.T) {
 		names = append(names, hdr.Name)
 		assertHeader(t, hdr)
 	}
-	if !slices.Contains(names, "objects/") || !slices.Contains(names, "objects/a/") {
+	if !slices.Contains(names, "raw/") || !slices.Contains(names, "raw/a/") {
 		t.Errorf("parent directories missing: %q", names)
 	}
 	plain := make([]string, len(names))
@@ -95,7 +95,7 @@ func assertHeader(t *testing.T, hdr *tar.Header) {
 }
 
 func TestManifestAndConfig(t *testing.T) {
-	tree := settingsimage.Tree{"objects/a": []byte("a")}
+	tree := settingsimage.Tree{"raw/a": []byte("a")}
 	img, err := settingsimage.Build(t.Context(), tree, settingsimage.BuildOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestManifestAndConfig(t *testing.T) {
 	}
 	// Without a source, exactly two annotations; with one, three (the known answers).
 	assertEqual(t, "annotations", len(m.Annotations), 2)
-	assertEqual(t, "layout", m.Annotations[settingsimage.LayoutAnnotation], "v1")
+	assertEqual(t, "layout", m.Annotations[settingsimage.LayoutAnnotation], "v2")
 	assertEqual(t, "artifactType", m.ArtifactType, "")
 
 	cfg, err := img.Fetch(t.Context(), img.Config)
@@ -139,15 +139,16 @@ func TestDigestIsStable(t *testing.T) {
 			}
 		}
 	}
-	content := map[string]string{"a.yaml": configMapYAML, "z/b.txt": "b\n", "m.txt": "m\n"}
+	a, b, m := "resources/a.yaml", "raw/z/b.txt", "raw/m.txt"
+	content := map[string]string{a: configMapYAML, b: "b\n", m: "m\n"}
 	one, two, three := t.TempDir(), t.TempDir(), t.TempDir()
-	write(one, []string{"a.yaml", "m.txt", "z/b.txt"}, 0o644, content)
-	write(two, []string{"z/b.txt", "m.txt", "a.yaml"}, 0o755, content)
-	if err := os.Chtimes(filepath.Join(two, "m.txt"), time.Now(), time.Unix(12345, 0)); err != nil {
+	write(one, []string{a, m, b}, 0o644, content)
+	write(two, []string{b, m, a}, 0o755, content)
+	if err := os.Chtimes(filepath.Join(two, "raw", "m.txt"), time.Now(), time.Unix(12345, 0)); err != nil {
 		t.Fatal(err)
 	}
-	content["m.txt"] = "m!\n"
-	write(three, []string{"a.yaml", "m.txt", "z/b.txt"}, 0o644, content)
+	content[m] = "m!\n"
+	write(three, []string{a, m, b}, 0o644, content)
 
 	digest := func(dir string) string {
 		tree, err := settingsimage.Render(os.DirFS(dir), settingsimage.RenderOptions{})

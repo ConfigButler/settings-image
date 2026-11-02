@@ -23,9 +23,11 @@ inputs:
   tags:
     description: Extra tags, one per line.
     default: ''
-  files:
-    description: "'false' leaves out the files/ view."
-    default: 'true'
+  sensitive-kinds:
+    description: >-
+      Kinds that must be SOPS-encrypted like a Secret, one per line, as group/Kind (Kind alone for
+      the core group).
+    default: ''
   provenance:
     description: "'false' builds no provenance referrer and no sha- tag."
     default: 'true'
@@ -83,7 +85,7 @@ runs:
         SI_REPOSITORY: ${{ inputs.repository }}
         SI_BRANCH_TAG: ${{ inputs.branch-tag }}
         SI_TAGS: ${{ inputs.tags }}
-        SI_FILES: ${{ inputs.files }}
+        SI_SENSITIVE_KINDS: ${{ inputs.sensitive-kinds }}
         SI_PROVENANCE: ${{ inputs.provenance }}
         SI_USERNAME: ${{ inputs.username }}
         SI_PASSWORD: ${{ inputs.password }}
@@ -96,7 +98,10 @@ runs:
           tag="${tag//[[:space:]]/}"
           if [[ -n "$tag" ]]; then args+=(--tag "$tag"); fi
         done <<< "$SI_TAGS"
-        if [[ "$SI_FILES" == "false" ]]; then args+=(--no-files); fi
+        while IFS= read -r kind; do
+          kind="${kind//[[:space:]]/}"
+          if [[ -n "$kind" ]]; then args+=(--sensitive-kind "$kind"); fi
+        done <<< "$SI_SENSITIVE_KINDS"
         if [[ "$SI_PROVENANCE" == "false" ]]; then args+=(--no-provenance); fi
         if [[ "$SI_PLAIN_HTTP" == "true" ]]; then args+=(--plain-http); fi
         # The pair is passed only when a password is set, so password: '' leaves the Docker

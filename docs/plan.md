@@ -10,15 +10,16 @@ user. Nothing has to run in a cluster.
 
 ## Decisions already made
 
-- **The format is [format-v1.md](format-v1.md)**, and its known answers (§9) are the acceptance
-  test. They were computed with a private reference implementation that this repository replaces.
-  Match its bytes; do not improve on them.
+- **The format is [format-v2.md](format-v2.md)**, and its known answers (§11) are the acceptance
+  test. v1's were computed with a private reference implementation; v2's with this repository's
+  writer, checked against a registry with `crane`. Change a byte only with a new layout version.
 - **One public Go package, `pkg/settingsimage`**, for everything a producer needs: render, build,
   provenance, push. The CLI is a thin layer over it. Other projects will import it, so its API is
   the one thing to design with care. Keep `internal/` for the CLI's plumbing.
 - **Dependencies:** `oras.land/oras-go/v2` (pin v2.6.4 first; the known answers were computed
   with it), `github.com/opencontainers/image-spec`, `github.com/opencontainers/go-digest`, and
-  `k8s.io/apimachinery` for its YAML-or-JSON stream decoder only. No client-go, no Git library.
+  `go.yaml.in/yaml/v3` to parse `resources/` (its nodes show duplicate keys). No client-go, no
+  Git library.
 - **The CLI shells out to `git`** ([cli.md §3](cli.md#3-git-where-provenance-and-the-sha--tag-come-from)).
 - **The Action is composite**, and builds the CLI from its own source until releases carry binaries
   ([github-action.md §3](github-action.md#3-where-the-binary-comes-from)).
@@ -34,24 +35,24 @@ user. Nothing has to run in a cluster.
 
 ## Phase 1: the format package
 
-1. **Render.** Turn a folder into a tree (`map[string][]byte`) with both views, and every refusal
-   of [format-v1.md §2, §3, §6](format-v1.md#2-input-the-folder). Two entry points: `fs.FS` (a
+1. **Render.** Turn a folder into a tree (`map[string][]byte`) with every refusal of
+   [format-v2.md §2–§5, §8](format-v2.md#2-input-the-folder). Two entry points: `fs.FS` (a
    directory) and an archive reader (tar or tar+gzip, plus a root path, for a Flux artifact later).
    A refusal is a typed error carrying a path and a reason, testable with `errors.As`.
    - **Observe:** a test per refusal. A test that one folder, given as a directory and as an
      archive with shuffled entries, odd modes and mtimes, a `./` prefix and files outside the root,
      renders to the same tree.
 2. **Build.** The tree becomes a layer, a config and a manifest in an oras-go content store
-   ([format-v1.md §4, §5](format-v1.md#4-the-layer)).
-   - **Observe:** both known-answer cases ([§9](format-v1.md#9-known-answers)) as golden tests on
+   ([format-v2.md §6, §7](format-v2.md#6-the-layer)).
+   - **Observe:** both known-answer cases ([§11](format-v2.md#11-known-answers)) as golden tests on
      the diffID, the layer, the config, and the manifest's **exact bytes**. Also: every file is
      `0644` in the layer, and the manifest carries exactly the three annotations.
-3. **Provenance.** The referrer of [format-v1.md §7](format-v1.md#7-provenance-a-referrer-not-part-of-the-image).
+3. **Provenance.** The referrer of [format-v2.md §9](format-v2.md#9-provenance-a-referrer-not-part-of-the-image).
    - **Observe:** the known-answer referrer digest; and an empty field is omitted, not written as
      `""`.
 4. **Tags and push.**
    - The branch-tag sanitiser, and the tag validator.
-   - `Push` in the order of [format-v1.md §8](format-v1.md#8-tags-and-pushing-in-order).
+   - `Push` in the order of [format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order).
    - A remote with oras-go's retry client and `SkipReferrersGC = true`.
    - Credentials from a static pair or the Docker config.
    - A distinct error for 401/403.
@@ -104,7 +105,7 @@ from both registries has the expected files, modes, annotations and referrer.
    or refusal). Required cases:
    - both known answers;
    - one for every refusal;
-   - a nested tree, a `binaryData` ConfigMap, and a non-KRM file.
+   - a nested tree, a `binaryData` ConfigMap, an annotated ConfigMap, and a `raw/` file.
 
    A Go test rebuilds every case and fails on any byte of drift. Readers in other languages test
    against this directory at a release tag.
@@ -133,7 +134,7 @@ page first. The questions to answer:
 ## Phase 4: SOPS-encrypted files (prototype done)
 
 Admit SOPS-encrypted documents and refuse plaintext where a value must be secret. The rules are in
-[format-v1.md §6](format-v1.md#6-refusals). Built ahead of order on 2026-11-02, with the example in
+[format-v2.md §4](format-v2.md#secrets). Built ahead of order on 2026-11-02, with the example in
 [examples/sops-secret/](../examples/sops-secret/) and the test key in `testdata/sops/`; `task
 test-mount` decrypts the mounted file.
 
@@ -156,5 +157,8 @@ it is built here.
 - **The repository goes public once the first version works** (phase 2). Until then the Action can
   only be used from inside the ConfigButler organisation, and the Marketplace waits.
 - **Changes are committed straight to `main`** ([AGENTS.md](../AGENTS.md)).
-- **v1 stays limited.** Settings are KRM first. The v1 parse refusal for `.yaml`/`.yml`/`.json`
-  files that do not decode stays. Widening to other shapes is a later layout, if a user needs it.
+- **Layout v2: say what each file is** ([review nr2](reviews/2026-11-02-nr2.md)). A settings folder
+  has `resources/` (Kubernetes resources, read and checked) and `raw/` (anything, never read).
+  ConfigMaps become files unless annotated; Secrets are resources and must be SOPS-encrypted with
+  their payload as ciphertext. No index file: a reader lists `resources/`. v1 had no users and its
+  writer is gone. Schema validation is not for now.

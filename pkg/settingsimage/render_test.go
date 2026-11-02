@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -28,7 +29,7 @@ type renderRefusal struct {
 }
 
 func TestRenderRefusals(t *testing.T) {
-	for _, tt := range append(renderRefusals(), configMapRefusals()...) {
+	for _, tt := range slices.Concat(renderRefusals(), resourceRefusals(), configMapRefusals()) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := settingsimage.Render(tt.folder, settingsimage.RenderOptions{})
 			assertRefused(t, err, tt.wantPath, tt.wantIn)
@@ -46,111 +47,154 @@ func renderRefusals() []renderRefusal {
 			wantIn:   "empty",
 		},
 		{
-			name:     "symlink",
-			folder:   fstest.MapFS{"a.txt": file("x"), "link": {Data: []byte("a.txt"), Mode: os.ModeSymlink}},
-			wantPath: "link",
+			name:     "a file at the top",
+			folder:   fstest.MapFS{"raw/a.txt": file("x"), "app.yaml": file(configMap("cm", ""))},
+			wantPath: "app.yaml",
+			wantIn:   "not under resources/ or raw/",
+		},
+		{
+			name:     "another folder at the top",
+			folder:   fstest.MapFS{"objects/a.txt": file("x")},
+			wantPath: "objects/a.txt",
+			wantIn:   "not under resources/ or raw/",
+		},
+		{
+			name:     "a file named resources",
+			folder:   fstest.MapFS{"resources": file("x")},
+			wantPath: "resources",
+			wantIn:   "not under resources/ or raw/",
+		},
+		{
+			name: "symlink",
+			folder: fstest.MapFS{
+				"raw/a.txt": file("x"),
+				"raw/link":  {Data: []byte("a.txt"), Mode: os.ModeSymlink},
+			},
+			wantPath: "raw/link",
 			wantIn:   "symlink",
 		},
 		{
 			name:     "device",
-			folder:   fstest.MapFS{"dev": {Mode: os.ModeDevice}},
-			wantPath: "dev",
+			folder:   fstest.MapFS{"raw/dev": {Mode: os.ModeDevice}},
+			wantPath: "raw/dev",
 			wantIn:   "not a regular file",
 		},
 		{
-			name:     "too large",
-			folder:   fstest.MapFS{"a": {Data: make([]byte, 6<<20)}, "b": {Data: make([]byte, 6<<20)}},
+			name: "too large",
+			folder: fstest.MapFS{
+				"raw/a": {Data: make([]byte, 6<<20)},
+				"raw/b": {Data: make([]byte, 6<<20)},
+			},
 			wantPath: ".",
 			wantIn:   "bytes in total",
 		},
 		{
-			name:     "unparseable yaml",
-			folder:   fstest.MapFS{"bad.yaml": file("a: [unclosed\n")},
-			wantPath: "bad.yaml",
-			wantIn:   "does not parse",
+			name:     "plaintext Secret",
+			folder:   fstest.MapFS{"resources/s.yaml": file(secret("s", "stringData:\n  password: plain\n"))},
+			wantPath: "resources/s.yaml",
+			wantIn:   "Secret s is not SOPS-encrypted",
 		},
 		{
-			name:     "top-level list",
-			folder:   fstest.MapFS{"list.yml": file("- a\n- b\n")},
-			wantPath: "list.yml",
-			wantIn:   "does not parse",
-		},
-		{
-			name:     "json scalar, uppercase extension",
-			folder:   fstest.MapFS{"x.JSON": file("42")},
-			wantPath: "x.JSON",
-			wantIn:   "does not parse",
-		},
-		{
-			name:     "secret",
-			folder:   fstest.MapFS{"s.yaml": file("apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n")},
-			wantPath: "s.yaml",
-			wantIn:   "Secret",
-		},
-		{
-			name: "secret as second document",
+			name: "Secret as second document",
 			folder: fstest.MapFS{
-				"s.yaml": file("kind: Thing\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n"),
+				"resources/s.yaml": file(configMap("cm", "") + "---\n" + secret("s", "")),
 			},
-			wantPath: "s.yaml",
-			wantIn:   "Secret",
+			wantPath: "resources/s.yaml",
+			wantIn:   "Secret s is not SOPS-encrypted",
 		},
 	}
 }
 
-// configMapRefusals are the refusals of the files/ view (format-v1.md §3).
-func configMapRefusals() []renderRefusal {
+// resourceRefusals are the rules of format-v2.md §4: what a file under resources/ must be.
+func resourceRefusals() []renderRefusal {
+	one := func(name, content, wantIn string) renderRefusal {
+		return renderRefusal{
+			name:     name,
+			folder:   fstest.MapFS{"resources/r.yaml": file(content)},
+			wantPath: "resources/r.yaml",
+			wantIn:   wantIn,
+		}
+	}
+	order := "apiVersion: shop.configbutler.ai/v1\nkind: Order\nmetadata:\n  name: o\n"
 	return []renderRefusal{
 		{
-			name:     "unsafe configmap name",
-			folder:   fstest.MapFS{"c.yaml": file(configMap("..", "data:\n  k: v\n"))},
-			wantPath: "c.yaml",
-			wantIn:   "not safe",
+			name:     "not YAML or JSON",
+			folder:   fstest.MapFS{"resources/pricing.toml": file("a = 1\n")},
+			wantPath: "resources/pricing.toml",
+			wantIn:   "put any other file in raw/",
 		},
+		one("unparseable", "a: [unclosed\n", "does not parse"),
+		one("top-level list", "- a\n- b\n", "must be a mapping"),
+		one("scalar", "42\n", "must be a mapping"),
+		one("no apiVersion", "kind: Order\nmetadata:\n  name: o\n", "without apiVersion"),
+		one("no kind", "apiVersion: v1\nmetadata:\n  name: o\n", "without kind"),
+		one("no metadata", "apiVersion: v1\nkind: Order\n", "without metadata"),
+		one("no name", "apiVersion: v1\nkind: Order\nmetadata:\n  namespace: x\n", "without metadata.name"),
+		one("name not a string", "apiVersion: v1\nkind: Order\nmetadata:\n  name: 3\n", "without metadata.name"),
+		one("namespace not a string", order+"  namespace: [a]\n", "namespace is not a string"),
+		one("duplicate kind key", "apiVersion: v1\nkind: Secret\nkind: ConfigMap\nmetadata:\n  name: x\n",
+			`the key "kind" appears twice`),
+		one("duplicate nested key", configMap("cm", "data:\n  a: x\n  a: y\n"), `the key "a" appears twice`),
+		one("duplicate key in JSON", `{"apiVersion":"v1","kind":"ConfigMap","kind":"Secret"}`, "appears twice"),
+		one("an anchor", order+"spec: &s\n  a: b\n", "anchors and aliases"),
+		one("a merge key", order+"spec:\n  <<: {a: b}\n", "merge keys"),
+		one("a v1 List", "apiVersion: v1\nkind: List\nmetadata:\n  name: l\nitems:\n- "+
+			strings.ReplaceAll(secret("s", ""), "\n", "\n  "), "is a list"),
+		one("a SecretList", "apiVersion: v1\nkind: SecretList\nmetadata:\n  name: l\n", "is a list"),
+		one("the same resource twice", order+"---\n"+order, "declared twice"),
+		one("the same resource at two versions", order+"---\n"+
+			strings.Replace(order, "/v1", "/v2", 1), "declared twice"),
 		{
-			name:     "configmap without a name",
-			folder:   fstest.MapFS{"c.yaml": file("apiVersion: v1\nkind: ConfigMap\ndata:\n  k: v\n")},
-			wantPath: "c.yaml",
-			wantIn:   "not safe",
-		},
-		{
-			name:     "unsafe key",
-			folder:   fstest.MapFS{"c.yaml": file(configMap("cm", "data:\n  a/b: v\n"))},
-			wantPath: "c.yaml",
-			wantIn:   "not safe",
-		},
-		{
-			name:     "non-string data value",
-			folder:   fstest.MapFS{"c.yaml": file(configMap("cm", "data:\n  k: 3\n"))},
-			wantPath: "c.yaml",
-			wantIn:   "not a string",
-		},
-		{
-			name:     "bad base64",
-			folder:   fstest.MapFS{"c.yaml": file(configMap("cm", "binaryData:\n  k: '!!'\n"))},
-			wantPath: "c.yaml",
-			wantIn:   "not base64",
-		},
-		{
-			name:     "key in data and binaryData",
-			folder:   fstest.MapFS{"c.yaml": file(configMap("cm", "data:\n  k: v\nbinaryData:\n  k: dg==\n"))},
-			wantPath: "c.yaml",
-			wantIn:   "written twice",
-		},
-		{
-			name: "two configmaps of one name",
+			name: "the same resource in two files",
 			folder: fstest.MapFS{
-				"a.yaml": file(configMap("cm", "data:\n  k: v\n")),
-				"b.yaml": file(configMap("cm", "data:\n  k: w\n")),
+				"resources/a.yaml":     file(order),
+				"resources/sub/b.yaml": file(order),
 			},
-			wantPath: "b.yaml",
-			wantIn:   "written twice",
+			wantPath: "resources/sub/b.yaml",
+			wantIn:   "Order o is declared twice, here and in resources/a.yaml",
+		},
+	}
+}
+
+// configMapRefusals are the refusals of the configmaps/ files (format-v2.md §5).
+func configMapRefusals() []renderRefusal {
+	one := func(name, content, wantIn string) renderRefusal {
+		return renderRefusal{
+			name:     name,
+			folder:   fstest.MapFS{"resources/c.yaml": file(content)},
+			wantPath: "resources/c.yaml",
+			wantIn:   wantIn,
+		}
+	}
+	return []renderRefusal{
+		one("unsafe configmap name", configMap("a:b", "data:\n  k: v\n"), "not safe"),
+		one("unsafe key", configMap("cm", "data:\n  a/b: v\n"), "not safe"),
+		one("non-string data value", configMap("cm", "data:\n  k: 3\n"), "not a string"),
+		one("bad base64", configMap("cm", "binaryData:\n  k: '!!'\n"), "not base64"),
+		one("data not a mapping", configMap("cm", "data: [a]\n"), "data is not a mapping"),
+		one("key in data and binaryData", configMap("cm", "data:\n  k: v\nbinaryData:\n  k: dg==\n"),
+			"written twice"),
+		one("bad annotation value", configMap("cm", "")+"  annotations:\n    "+
+			settingsimage.FilesAnnotation+": \"no\"\n", `must be "true" or "false"`),
+		{
+			name: "two configmaps of one name in two namespaces",
+			folder: fstest.MapFS{
+				"resources/a.yaml": file(configMap("cm", "data:\n  k: v\n")),
+				"resources/b.yaml": file(strings.Replace(configMap("cm", "data:\n  other: w\n"),
+					"name: cm", "name: cm\n  namespace: elsewhere", 1)),
+			},
+			wantPath: "resources/b.yaml",
+			wantIn:   "already becomes configmaps/cm/",
 		},
 	}
 }
 
 func configMap(name, body string) string {
 	return "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: " + name + "\n" + body
+}
+
+func secret(name, body string) string {
+	return "apiVersion: v1\nkind: Secret\nmetadata:\n  name: " + name + "\n" + body
 }
 
 func assertRefused(t *testing.T, err error, wantPath, wantIn string) {
@@ -164,52 +208,59 @@ func assertRefused(t *testing.T, err error, wantPath, wantIn string) {
 	}
 }
 
-func TestRenderViews(t *testing.T) {
+func TestRenderTree(t *testing.T) {
+	keepAsResource := strings.Replace(configMap("kept", "data:\n  k: v\n"), "name: kept",
+		"name: kept\n  annotations:\n    "+settingsimage.FilesAnnotation+": \"false\"", 1)
 	folder := fstest.MapFS{
-		"cm.yaml": file(configMap("app", "data:\n  a.conf: x=1\nbinaryData:\n  logo.bin: AAEC\n") +
-			"---\n" + configMap("other", "data:\n  b: two\n")),
-		"list.yaml": file(
-			"apiVersion: v1\nkind: List\nitems:\n- " + strings.ReplaceAll(configMap("in-list", ""), "\n", "\n  "),
-		),
-		"other-cm.yaml": file(
+		"resources/cm.yaml": file(configMap("app", "data:\n  a.conf: x=1\nbinaryData:\n  logo.bin: AAEC\n") +
+			"---\n" + configMap("other", "data:\n  b: two\n") + "---\n" + keepAsResource),
+		"resources/other-cm.yaml": file(
 			"apiVersion: example.com/v1\nkind: ConfigMap\nmetadata:\n  name: not-core\ndata:\n  k: v\n",
 		),
-		"plain.json": file(`{"metadata": "not krm", "kind": 3}`),
-		"empty.yaml": file("# only a comment\n---\n"),
-		"notes.txt":  file("not: [parsed\n"),
-		".git/HEAD":  file("ref: refs/heads/main\n"),
-		"sub/.git":   file("gitdir: ../.git/modules/sub\n"),
+		"resources/order.JSON": file("{\n\t\"apiVersion\": \"shop.configbutler.ai/v1\",\n\t\"kind\": \"Order\"," +
+			"\n\t\"metadata\": {\"name\": \"o\", \"namespace\": \"shop\"}\n}\n"),
+		"resources/same-name-elsewhere.yaml": file(
+			"apiVersion: shop.configbutler.ai/v1\nkind: Order\nmetadata:\n  name: o\n",
+		),
+		"resources/empty.yaml":  file("# only a comment\n---\n"),
+		"raw/list.yaml":         file("- a\n- b\n"),
+		"raw/secret.yaml":       file(secret("s", "stringData:\n  password: plain\n")),
+		"raw/notes.txt":         file("not: [parsed\n"),
+		"raw/dup.yaml":          file("a: 1\na: 2\n"),
+		".git/HEAD":             file("ref: refs/heads/main\n"),
+		"raw/sub/.git":          file("gitdir: ../.git/modules/sub\n"),
+		"resources/.git/x.toml": file("not checked"),
 	}
 	tree, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertTreePaths(t, tree, []string{
-		"files/app/a.conf", "files/app/logo.bin", "files/other/b",
-		"objects/cm.yaml", "objects/empty.yaml", "objects/list.yaml", "objects/notes.txt",
-		"objects/other-cm.yaml", "objects/plain.json",
+		"configmaps/app/a.conf", "configmaps/app/logo.bin", "configmaps/other/b",
+		"raw/dup.yaml", "raw/list.yaml", "raw/notes.txt", "raw/secret.yaml",
+		"resources/cm.yaml", "resources/empty.yaml", "resources/order.JSON", "resources/other-cm.yaml",
+		"resources/same-name-elsewhere.yaml",
 	})
-	assertEqual(t, "data value", string(tree["files/app/a.conf"]), "x=1")
-	assertEqual(t, "binaryData value", string(tree["files/app/logo.bin"]), "\x00\x01\x02")
-	assertEqual(t, "object bytes", string(tree["objects/notes.txt"]), "not: [parsed\n")
+	assertEqual(t, "data value", string(tree["configmaps/app/a.conf"]), "x=1")
+	assertEqual(t, "binaryData value", string(tree["configmaps/app/logo.bin"]), "\x00\x01\x02")
+	assertEqual(t, "raw bytes", string(tree["raw/notes.txt"]), "not: [parsed\n")
+}
 
-	noFiles, err := settingsimage.Render(folder, settingsimage.RenderOptions{NoFiles: true})
+// Only raw/: no resource, no configmaps/.
+func TestRenderRawOnly(t *testing.T) {
+	tree, err := settingsimage.Render(fstest.MapFS{"raw/settings.toml": file("a = 1\n")}, settingsimage.RenderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for p := range noFiles {
-		if strings.HasPrefix(p, "files/") {
-			t.Errorf("NoFiles: tree has %s", p)
-		}
-	}
+	assertTreePaths(t, tree, []string{"raw/settings.toml"})
 }
 
 // One folder, as a directory and as a messy archive, renders to one tree and one digest.
 func TestRenderArchiveMatchesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"configmap.yaml":    configMapYAML,
-		"sub/dir/notes.txt": "plain text\n",
+		"resources/configmap.yaml": configMapYAML,
+		"raw/sub/dir/notes.txt":    "plain text\n",
 	}
 	for p, s := range files {
 		full := filepath.Join(dir, filepath.FromSlash(p))
@@ -227,10 +278,10 @@ func TestRenderArchiveMatchesDirectory(t *testing.T) {
 
 	archive := tarball(t, true, []tarEntry{
 		{name: "./outside.yaml", body: "kind: Secret\n"}, // outside the root: ignored
-		{name: "./configs/shop/sub/dir/notes.txt", body: "plain text\n", mode: 0o755},
+		{name: "./configs/shop/raw/sub/dir/notes.txt", body: "plain text\n", mode: 0o755},
 		{name: "./configs/shop/", dir: true},
 		{name: "./configs/shop/.git/config", body: "x"},
-		{name: "configs/shop/configmap.yaml", body: configMapYAML, mode: 0o600},
+		{name: "configs/shop/resources/configmap.yaml", body: configMapYAML, mode: 0o600},
 		{name: "./configs/shopping/x.txt", body: "a sibling with a common prefix"},
 	})
 	fromArchive, err := settingsimage.RenderArchive(
@@ -271,14 +322,14 @@ func TestRenderArchiveRefusals(t *testing.T) {
 		{name: "fifo", entries: []tarEntry{{name: "f", link: tar.TypeFifo}}, wantPath: "f", wantIn: "regular"},
 		{
 			name:     "duplicate",
-			entries:  []tarEntry{{name: "a", body: "1"}, {name: "./a", body: "2"}},
-			wantPath: "a",
+			entries:  []tarEntry{{name: "raw/a", body: "1"}, {name: "./raw/a", body: "2"}},
+			wantPath: "raw/a",
 			wantIn:   "twice",
 		},
 		{
 			name:     "file and directory",
-			entries:  []tarEntry{{name: "a", body: "1"}, {name: "a/b", body: "2"}},
-			wantPath: "a",
+			entries:  []tarEntry{{name: "raw/a", body: "1"}, {name: "raw/a/b", body: "2"}},
+			wantPath: "raw/a",
 			wantIn:   "both",
 		},
 		{name: "empty", entries: []tarEntry{{name: "d/", dir: true}}, wantPath: ".", wantIn: "empty"},

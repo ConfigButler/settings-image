@@ -18,7 +18,7 @@ spec:
   volumes:
     - name: settings
       image:
-        reference: ghcr.io/acme/app-settings@sha256:c5edc2c3…   # by digest, always
+        reference: ghcr.io/acme/app-settings@sha256:80b52437…   # by digest, always
 ```
 
 | Kubernetes | Image volumes |
@@ -55,11 +55,21 @@ settings-image is being built to produce the real thing, and to add what setting
 - **The same folder gives the same digest.** A commit that touches other files rolls no pods, and a
   rollback lands on the old digest.
 - **It refuses bad input before anything is pushed**: an empty folder, a link that leaves the
-  folder, a Kubernetes `Secret`.
+  folder, a Kubernetes `Secret` in `resources/` that is not SOPS-encrypted.
 - **Provenance:** the commit and its author, attached to the image as an OCI referrer.
 - **A GitHub Action**, so a commit that changes the folder becomes a new image.
 
-It understands Kubernetes objects (KRM) first: a `ConfigMap`'s keys also appear as plain files.
+A settings folder says what each file is:
+
+```text
+configs/shop/
+  resources/   Kubernetes resources: read and checked; a ConfigMap's keys also become plain files
+  raw/         anything else: copied byte for byte, never read
+```
+
+The image holds `resources/` and `raw/` as they are in Git, plus `configmaps/<name>/<key>` for every
+ConfigMap (unless annotated `settings-image.configbutler.ai/files: "false"`). The contract is
+[docs/format-v2.md](docs/format-v2.md).
 
 ## Use
 
@@ -98,7 +108,7 @@ task build    # bin/settings-image, with its version baked in
 task test-mount  # a k3d cluster: mount the examples as image volumes and check every file
 ```
 
-[examples/](examples/) has settings folders to try: ConfigMaps, custom resources, and a
+[examples/](examples/) has settings folders to try: ConfigMaps, custom resources, pictures, and a
 SOPS-encrypted Secret.
 
 ## License

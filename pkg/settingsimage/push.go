@@ -19,7 +19,7 @@ type PushResult struct {
 }
 
 // Push copies the image, then its provenance referrer, then sets tags in the order given, to
-// target (format-v1.md §8). The caller puts moving tags last, so whoever follows one never sees a
+// target (format-v2.md §10). The caller puts moving tags last, so whoever follows one never sees a
 // digest without its provenance. Every step is idempotent. Every tag is validated before
 // anything is written.
 func (img *Image) Push(ctx context.Context, target oras.Target, tags []string) (PushResult, error) {

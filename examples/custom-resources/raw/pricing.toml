@@ -1,0 +1,4 @@
+# Not a Kubernetes resource, so it lives in raw/: never read, carried byte for byte.
+[pricing]
+scoop = 2.50
+cone = 0.50

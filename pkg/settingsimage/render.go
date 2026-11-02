@@ -15,17 +15,15 @@ import (
 )
 
 // MaxInputSize is the most a folder may hold, summed over its files' uncompressed bytes. The
-// derived files/ view does not count.
+// derived configmaps/ files do not count.
 const MaxInputSize = 10 << 20
 
-// Tree is a rendered folder: slash-separated paths, each under objects/ or files/, to their
-// bytes. It holds files only; directories are implied.
+// Tree is a rendered folder: slash-separated paths, each under resources/, raw/ or configmaps/,
+// to their bytes. It holds files only; directories are implied.
 type Tree map[string][]byte
 
 // RenderOptions are the writer's choices for the tree.
 type RenderOptions struct {
-	// NoFiles leaves out the files/ view.
-	NoFiles bool
 	// SensitiveKinds are kinds that must arrive SOPS-encrypted, as "group/Kind", or "Kind" for
 	// the core group. A Secret must always be SOPS-encrypted.
 	SensitiveKinds []string
@@ -195,16 +193,19 @@ func (in *input) render(opts RenderOptions) (Tree, error) {
 	}
 	tree := Tree{}
 	for p, b := range in.files {
-		tree["objects/"+p] = b
+		top, _, nested := strings.Cut(p, "/")
+		if !nested || (top != ResourcesDir && top != RawDir) {
+			return nil, refuse(p, "not under resources/ or raw/; put Kubernetes resources in resources/ "+
+				"and any other file in raw/")
+		}
+		tree[p] = b
 	}
-	views, err := configMapFiles(in.files, opts)
+	configMaps, err := renderResources(in.files, opts)
 	if err != nil {
 		return nil, err
 	}
-	if !opts.NoFiles {
-		for p, b := range views {
-			tree[p] = b
-		}
+	for p, b := range configMaps {
+		tree[p] = b
 	}
 	if err := checkNoFileIsADirectory(tree); err != nil {
 		return nil, err
@@ -218,7 +219,7 @@ func checkNoFileIsADirectory(tree Tree) error {
 	for p := range tree {
 		for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
 			if _, ok := tree[dir]; ok {
-				return refuse(strings.TrimPrefix(dir, "objects/"), "both a file and a directory")
+				return refuse(dir, "both a file and a directory")
 			}
 		}
 	}

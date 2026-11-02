@@ -18,8 +18,8 @@ const (
 	// LayoutAnnotation names the layout version of a settings image. A reader refuses a layout it
 	// does not know.
 	LayoutAnnotation = "ai.configbutler.settings-image.layout"
-	// LayoutV1 is the layout docs/format-v1.md describes.
-	LayoutV1 = "v1"
+	// LayoutV2 is the layout docs/format-v2.md describes.
+	LayoutV2 = "v2"
 
 	// epoch is the pinned org.opencontainers.image.created: oras-go stamps time.Now() otherwise.
 	epoch = "1970-01-01T00:00:00Z"
@@ -48,7 +48,7 @@ type Image struct {
 }
 
 // Build turns a tree into a settings image: one layer, the minimal config and the manifest of
-// format-v1.md §4 and §5.
+// format-v2.md §6 and §7.
 func Build(ctx context.Context, tree Tree, opts BuildOptions) (*Image, error) {
 	if len(tree) == 0 {
 		return nil, refuse(".", "the tree is empty")
@@ -73,7 +73,7 @@ func Build(ctx context.Context, tree Tree, opts BuildOptions) (*Image, error) {
 
 	annotations := map[string]string{
 		ocispec.AnnotationCreated: epoch,
-		LayoutAnnotation:          LayoutV1,
+		LayoutAnnotation:          LayoutV2,
 	}
 	if opts.Source != "" {
 		annotations[ocispec.AnnotationSource] = opts.Source

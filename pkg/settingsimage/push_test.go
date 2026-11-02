@@ -37,7 +37,7 @@ func (r *recorder) Tag(ctx context.Context, desc ocispec.Descriptor, ref string)
 func builtImage(t *testing.T, withProvenance bool) *settingsimage.Image {
 	t.Helper()
 	tree, err := settingsimage.Render(
-		fstest.MapFS{"configmap.yaml": file(configMapYAML)},
+		fstest.MapFS{"resources/configmap.yaml": file(configMapYAML)},
 		settingsimage.RenderOptions{},
 	)
 	if err != nil {

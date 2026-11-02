@@ -39,7 +39,7 @@ func (e *AuthError) Unwrap() error { return e.Err }
 
 // NewRepository is a remote repository (host/path, without a tag) set up as a writer needs it:
 // oras-go's retry client, credentials, and SkipReferrersGC, so a registry that refuses DELETE
-// does not fail a push (format-v1.md §7).
+// does not fail a push (format-v2.md §9).
 func NewRepository(reference string, opts RepositoryOptions) (*remote.Repository, error) {
 	repo, err := remote.NewRepository(reference)
 	if err != nil {

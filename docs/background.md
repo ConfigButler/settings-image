@@ -1,6 +1,6 @@
 # Background: what an image volume needs, and what was measured
 
-_What the format ([format-v1.md](format-v1.md)) rests on. Everything marked **verified** was run on
+_What the format ([format-v2.md](format-v2.md)) rests on. Everything marked **verified** was run on
 a k3s 1.36 cluster during a spike on 2026-10, unless it says otherwise. Read this before changing
 anything about how the image is built._
 
@@ -39,11 +39,11 @@ would not give is §3's stable digest, §5's refusals, or provenance.
 
 | Fact | Consequence in the format |
 |---|---|
-| Two builds of one tree give one digest, through `touch`, `chmod` and a reversed copy order (**verified**). One changed byte gives a new digest | mtimes, modes and order are normalised (§4 of the format) |
+| Two builds of one tree give one digest, through `touch`, `chmod` and a reversed copy order (**verified**). One changed byte gives a new digest | mtimes, modes and order are normalised (§6 of the format) |
 | oras-go's `PackManifest` stamps `org.opencontainers.image.created = time.Now()` when absent (**verified**: two digests one second apart) | `created` is pinned to the epoch |
 | A digest reference does no platform match: an arm64-only manifest mounted on an amd64 node (**verified**). An index costs 151 B of config and 596 B of manifest per extra platform | one manifest, `architecture: amd64` |
 | The mount is `ro` but **not `noexec`**: a `0755` script in the image ran (**verified**) | file modes forced to `0644` |
-| `subPath` on an image volume must be a directory: a file `subPath` fails with `ImageVolumeMountFailed` (**verified**) | `files/<configmap>/` is a directory a container can mount with `subPath` |
+| `subPath` on an image volume must be a directory: a file `subPath` fails with `ImageVolumeMountFailed` (**verified**) | `configmaps/<name>/` is a directory a container can mount with `subPath` |
 | uid 1000 with a read-only root filesystem reads everything (dirs `0755 0:0`, files `0644 0:0`) (**verified**) | uid/gid 0 is fine |
 | A tag is re-resolved at each container start. With `pullPolicy: Always`, a crash restart picked up new content inside a running pod, and two replicas served different values (**verified**) | consumers mount by digest, never by tag |
 | A missing digest: `ImagePullBackOff`, old pods keep serving, and the rollout completes by itself once the image exists (**verified**) | a failed push cannot take an application down |
@@ -81,8 +81,8 @@ The image digest is identical on all three, so content addressing holds across r
 ## 6. What a consuming application must do
 
 - Mount by digest. The deployer, not the app, decides which digest runs.
-- Mount `files/<configmap>/` as a directory `subPath`, or read `objects/` and decode the kinds it
-  knows.
+- Mount `configmaps/<name>/` as a directory `subPath`, or read `resources/` and decode the kinds
+  it knows, and `raw/` for anything else.
 - **Fail on a missing settings file instead of starting with defaults.** A bad configuration should
   keep the new pod un-ready, so the rolling update leaves the old pod serving.
 - Read provenance from the referrer if it wants to show who changed what. Settings load fine

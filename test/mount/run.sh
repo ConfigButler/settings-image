@@ -3,7 +3,7 @@
 # pod as volumes[].image by digest, and check what the pod sees. Needs task cluster first.
 #
 # A digest test proves the bytes are stable; this proves a kubelet accepts them, and that every
-# file arrives as format-v1.md promises: byte for byte, 0644, read-only, not executable.
+# file arrives as format-v2.md promises: byte for byte, 0644, read-only, not executable.
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-settings-image}"
@@ -75,8 +75,8 @@ spec:
         - { name: sops, mountPath: /settings/sops-secret, readOnly: true }
         - { name: pictures, mountPath: /settings/pictures, readOnly: true }
         - { name: edge, mountPath: /settings/edge-cases, readOnly: true }
-        # A ConfigMap's files/ directory as a subPath: what an application usually mounts.
-        - { name: configmap, mountPath: /etc/shop, subPath: files/shop-settings, readOnly: true }
+        # A ConfigMap's configmaps/ directory as a subPath: what a configMap volume gave before.
+        - { name: configmap, mountPath: /etc/shop, subPath: configmaps/shop-settings, readOnly: true }
   volumes:
     - { name: configmap, image: { reference: "${REF_CONFIGMAP}", pullPolicy: IfNotPresent } }
     - { name: crs, image: { reference: "${REF_CRS}", pullPolicy: IfNotPresent } }
@@ -91,50 +91,59 @@ fi
 echo "Pod is Ready with five image volumes"
 
 echo "examples/configmap"
-check "files/ view through a subPath" same_bytes <(printf 'maxScoops: 3\ncurrency: EUR\n') /etc/shop/settings.yaml
+check "configmaps/ files through a subPath" same_bytes <(printf 'maxScoops: 3\ncurrency: EUR\n') /etc/shop/settings.yaml
 check "second key of the same ConfigMap" same_bytes <(printf 'Welcome to the ice cream shop!\n') \
-    /settings/configmap/files/shop-settings/welcome.txt
+    /settings/configmap/configmaps/shop-settings/welcome.txt
 check "binaryData decoded (logo.png)" same_bytes \
-    <(sed -n 's/^  logo.png: //p' examples/configmap/app.yaml | base64 -d) /settings/configmap/files/branding/logo.png
-check "objects/ byte for byte" same_bytes examples/configmap/app.yaml /settings/configmap/objects/app.yaml
+    <(sed -n 's/^  logo.png: //p' examples/configmap/resources/app.yaml | base64 -d) \
+    /settings/configmap/configmaps/branding/logo.png
+check "resources/ byte for byte" same_bytes examples/configmap/resources/app.yaml \
+    /settings/configmap/resources/app.yaml
+check "an annotated ConfigMap has no configmaps/ files" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
+    exec settings-mount -- test -e /settings/configmap/configmaps/feature-flags"
 
 echo "examples/custom-resources"
-for f in orders.yaml opening-hours.json flavours/seasonal/pumpkin.yaml pricing.toml; do
-    check "objects/${f}" same_bytes "examples/custom-resources/${f}" "/settings/custom-resources/objects/${f}"
+for f in resources/orders.yaml resources/opening-hours.json resources/flavours/seasonal/pumpkin.yaml \
+    raw/pricing.toml; do
+    check "${f}" same_bytes "examples/custom-resources/${f}" "/settings/custom-resources/${f}"
 done
-check "no files/ view without a ConfigMap" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
-    exec settings-mount -- test -e /settings/custom-resources/files"
+check "no configmaps/ without a ConfigMap" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
+    exec settings-mount -- test -e /settings/custom-resources/configmaps"
 
 echo "examples/sops-secret"
-in_pod cat /settings/sops-secret/objects/database.secret.yaml > "${WORK}/secret.yaml"
-check "the SOPS-encrypted Secret byte for byte" cmp -s examples/sops-secret/database.secret.yaml "${WORK}/secret.yaml"
+in_pod cat /settings/sops-secret/resources/database.secret.yaml > "${WORK}/secret.yaml"
+check "the SOPS-encrypted Secret byte for byte" cmp -s examples/sops-secret/resources/database.secret.yaml \
+    "${WORK}/secret.yaml"
 check "it decrypts with the test key (the MAC survived)" bash -c \
     "SOPS_AGE_KEY_FILE=testdata/sops/age-test-key.txt sops decrypt '${WORK}/secret.yaml' \
     | grep -q 'password: correct-horse-battery-staple'"
-check "the plain ConfigMap beside it has its files/ view" same_bytes <(printf 'postgres.shop.svc') \
-    /settings/sops-secret/files/database/host
-check "the Secret has no files/ view" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
-    exec settings-mount -- test -e /settings/sops-secret/files/database/password"
+check "the plain ConfigMap beside it has its configmaps/ files" same_bytes <(printf 'postgres.shop.svc') \
+    /settings/sops-secret/configmaps/database/host
+check "the Secret has no configmaps/ files" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
+    exec settings-mount -- test -e /settings/sops-secret/configmaps/database/password"
 
 echo "examples/pictures"
-for f in products/vanilla.png products/chocolate.png products/strawberry.png users/ada.svg catalogue.yaml; do
-    check "objects/${f}" same_bytes "examples/pictures/${f}" "/settings/pictures/objects/${f}"
+for f in raw/products/vanilla.png raw/products/chocolate.png raw/products/strawberry.png raw/users/ada.svg \
+    resources/catalogue.yaml; do
+    check "${f}" same_bytes "examples/pictures/${f}" "/settings/pictures/${f}"
 done
+check "a picture is where the resource says" bash -c "kubectl --context ${CONTEXT} -n ${NAMESPACE} exec \
+    settings-mount -- test -s /settings/pictures/\$(sed -n 's/^  picture: //p' examples/pictures/resources/catalogue.yaml | head -1)"
 
 echo "edge cases"
 E=/settings/edge-cases
 check "binaryData with every byte 0-255" same_bytes <(python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256)))') \
-    "${E}/files/edge/all-bytes.bin"
-check "a dotfile key (.env)" same_bytes <(printf 'MODE=edge\n') "${E}/files/edge/.env"
-check "a non-ASCII file name (PAX header)" same_bytes <(printf 'ünïcode\n') "${E}/objects/ünïcode-naam.txt"
-check "a file name with a space" same_bytes <(printf 'spaces\n') "${E}/objects/with space.txt"
+    "${E}/configmaps/edge/all-bytes.bin"
+check "a dotfile key (.env)" same_bytes <(printf 'MODE=edge\n') "${E}/configmaps/edge/.env"
+check "a non-ASCII file name (PAX header)" same_bytes <(printf 'ünïcode\n') "${E}/raw/ünïcode-naam.txt"
+check "a file name with a space" same_bytes <(printf 'spaces\n') "${E}/raw/with space.txt"
 long="a-very-long-directory-name-to-push-past-the-hundred-byte-ustar-name-field/and-then-some-more/deep.txt"
-check "a path longer than 100 bytes" same_bytes <(printf 'deep\n') "${E}/objects/${long}"
-check "an empty file" in_pod test -f "${E}/objects/empty.txt" -a ! -s "${E}/objects/empty.txt"
+check "a path longer than 100 bytes" same_bytes <(printf 'deep\n') "${E}/raw/${long}"
+check "an empty file" in_pod test -f "${E}/raw/empty.txt" -a ! -s "${E}/raw/empty.txt"
 check "a committed 0755 script is 0644" bash -c "kubectl --context ${CONTEXT} -n ${NAMESPACE} \
-    exec settings-mount -- stat -c %a ${E}/objects/run.sh | grep -qx 644"
+    exec settings-mount -- stat -c %a ${E}/raw/run.sh | grep -qx 644"
 check "and does not execute" bash -c "! kubectl --context ${CONTEXT} -n ${NAMESPACE} \
-    exec settings-mount -- ${E}/objects/run.sh"
+    exec settings-mount -- ${E}/raw/run.sh"
 
 echo "every volume"
 check "every file is 0644, every directory 0755" bash -c "test -z \"\$(kubectl --context ${CONTEXT} \

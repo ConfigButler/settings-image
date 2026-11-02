@@ -1,4 +1,4 @@
-# Custom resources: carried byte for byte under objects/. No CRD is needed to build the image;
+# Custom resources: carried byte for byte under resources/. No CRD is needed to build the image;
 # the application decodes the kinds it knows.
 apiVersion: shop.configbutler.ai/v1
 kind: IceCreamOrder

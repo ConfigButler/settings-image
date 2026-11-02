@@ -4,7 +4,7 @@ Guidance for any coding agent working in this repository.
 
 settings-image builds a folder of settings into a content-addressed OCI image that a kubelet can
 mount as `volumes[].image`, and pushes it. Read [README.md](README.md) first, then
-[docs/plan.md](docs/plan.md) for what to build next. [docs/format-v1.md](docs/format-v1.md) is the
+[docs/plan.md](docs/plan.md) for what to build next. [docs/format-v2.md](docs/format-v2.md) is the
 contract: its known-answer digests are the acceptance test for every byte the code writes.
 
 ## Definition of done

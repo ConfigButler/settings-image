@@ -29,7 +29,6 @@ type buildFlags struct {
 	sensitive     stringList
 	branchTag     string
 	source        string
-	noFiles       bool
 	noProvenance  bool
 	allowDirty    bool
 	allowShallow  bool
@@ -99,7 +98,6 @@ func parseBuildFlags(push bool, args []string, stderr io.Writer) (*buildFlags, e
 	fs.Var(&f.tags, "tag", "an extra tag (repeatable)")
 	fs.StringVar(&f.branchTag, "branch-tag", "", "add the sanitised branch tag, pushed last")
 	fs.StringVar(&f.source, "source", "", "the source repository URL")
-	fs.BoolVar(&f.noFiles, "no-files", false, "leave out the files/ view")
 	fs.Var(&f.sensitive, "sensitive-kind", "a kind that must be SOPS-encrypted, as group/Kind (repeatable)")
 	fs.BoolVar(&f.noProvenance, "no-provenance", false, "build no referrer, and skip Git entirely")
 	fs.BoolVar(&f.allowDirty, "allow-dirty", false, "build a folder with uncommitted changes, without provenance")
@@ -160,10 +158,7 @@ func buildAndPush(ctx context.Context, f *buildFlags, stdin io.Reader, stderr io
 		return nil, err
 	}
 
-	tree, err := settingsimage.Render(os.DirFS(f.folder), settingsimage.RenderOptions{
-		NoFiles:        f.noFiles,
-		SensitiveKinds: f.sensitive,
-	})
+	tree, err := settingsimage.Render(os.DirFS(f.folder), settingsimage.RenderOptions{SensitiveKinds: f.sensitive})
 	if err != nil {
 		return nil, err
 	}

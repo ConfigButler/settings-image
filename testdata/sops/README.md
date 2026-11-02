@@ -7,11 +7,11 @@ decrypts with [age-test-key.txt](age-test-key.txt), a test key committed on purp
 SOPS_AGE_KEY_FILE=testdata/sops/age-test-key.txt sops decrypt testdata/sops/default.yaml
 ```
 
-| File | SOPS rule | Admitted |
+| File | SOPS rule | Admitted under `resources/` |
 |---|---|---|
-| `default.yaml` | none: SOPS writes `unencrypted_suffix: _unencrypted` and encrypts every other value | yes |
+| `default.yaml` | none: SOPS writes `unencrypted_suffix: _unencrypted` and encrypts every other value | no: `apiVersion`, `kind` and `metadata.name` are encrypted, so the build cannot name the resource |
 | `encrypted-regex.yaml` | `encrypted_regex: ^(data\|stringData)$` | yes |
-| `unencrypted-regex.yaml` | `unencrypted_regex` | yes |
+| `unencrypted-regex.yaml` | `unencrypted_regex` | no: it leaves `stringData.note_unencrypted` in plaintext, and a Secret's payload must be all ciphertext |
 | `encrypted-suffix.yaml` | `encrypted_suffix: Data` | yes |
 | `multi-document.yaml` | `encrypted_regex`, two documents, the `sops` block in both | yes |
 | `mac-only-encrypted.yaml` | `encrypted_regex` with `mac_only_encrypted` | no: the MAC leaves plaintext unprotected |
