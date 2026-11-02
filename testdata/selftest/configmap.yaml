@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: selftest
+data:
+  greeting.txt: |
+    hello from settings-image

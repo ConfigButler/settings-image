@@ -1,0 +1,112 @@
+# The GitHub Action: a commit that changes a settings folder becomes a new settings image.
+# Design: docs/github-action.md. It runs the CLI (docs/cli.md), built from this ref's own source.
+#
+# Every input reaches a script through env:, never through ${{ }} inside run:, so a branch name
+# or path is data, not shell.
+name: Push settings image
+description: Turn a folder of settings into a mountable OCI image and push it
+author: ConfigButler
+branding:
+  icon: package
+  color: blue
+
+inputs:
+  path:
+    description: The settings folder, relative to the workspace.
+    required: true
+  repository:
+    description: Where to push, without a tag, e.g. ghcr.io/acme/app-settings.
+    required: true
+  branch-tag:
+    description: The branch to derive a moving tag from. Set it to '' for none.
+    default: ${{ github.ref_name }}
+  tags:
+    description: Extra tags, one per line.
+    default: ''
+  files:
+    description: "'false' leaves out the files/ view."
+    default: 'true'
+  provenance:
+    description: "'false' builds no provenance referrer and no sha- tag."
+    default: 'true'
+  username:
+    description: Registry username.
+    default: ${{ github.actor }}
+  password:
+    description: >-
+      Registry password. Set it to '' to use the Docker config instead, as docker/login-action
+      leaves it, for a registry other than ghcr.io.
+    default: ${{ github.token }}
+  plain-http:
+    description: "'true' talks HTTP to the registry (a service-container registry)."
+    default: 'false'
+
+outputs:
+  digest:
+    description: The image digest.
+    value: ${{ steps.push.outputs.digest }}
+  reference:
+    description: repository@digest, for volumes[].image.reference.
+    value: ${{ steps.push.outputs.reference }}
+  tags:
+    description: The tags set, comma-separated.
+    value: ${{ steps.push.outputs.tags }}
+  changed:
+    description: "'false' when the image and every tag were already there."
+    value: ${{ steps.push.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache-dependency-path: ${{ github.action_path }}/go.sum
+
+    - name: Build settings-image
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/settings-image" ./cmd/settings-image
+
+    - name: Push the settings image
+      id: push
+      shell: bash
+      env:
+        SI_PATH: ${{ inputs.path }}
+        SI_REPOSITORY: ${{ inputs.repository }}
+        SI_BRANCH_TAG: ${{ inputs.branch-tag }}
+        SI_TAGS: ${{ inputs.tags }}
+        SI_FILES: ${{ inputs.files }}
+        SI_PROVENANCE: ${{ inputs.provenance }}
+        SI_USERNAME: ${{ inputs.username }}
+        SI_PASSWORD: ${{ inputs.password }}
+        SI_PLAIN_HTTP: ${{ inputs.plain-http }}
+      run: |
+        set -euo pipefail
+        args=(push "$SI_PATH" --repository "$SI_REPOSITORY" --json)
+        if [[ -n "$SI_BRANCH_TAG" ]]; then args+=(--branch-tag "$SI_BRANCH_TAG"); fi
+        while IFS= read -r tag; do
+          tag="${tag//[[:space:]]/}"
+          if [[ -n "$tag" ]]; then args+=(--tag "$tag"); fi
+        done <<< "$SI_TAGS"
+        if [[ "$SI_FILES" == "false" ]]; then args+=(--no-files); fi
+        if [[ "$SI_PROVENANCE" == "false" ]]; then args+=(--no-provenance); fi
+        if [[ "$SI_PLAIN_HTTP" == "true" ]]; then args+=(--plain-http); fi
+        # The pair is passed only when a password is set, so password: '' leaves the Docker
+        # config in charge (docs/reviews/2026-11-02-first-read.md, question 2).
+        if [[ -n "$SI_PASSWORD" ]]; then
+          export SETTINGS_IMAGE_USERNAME="$SI_USERNAME" SETTINGS_IMAGE_PASSWORD="$SI_PASSWORD"
+        fi
+
+        out="$("$RUNNER_TEMP/settings-image" "${args[@]}")"
+        echo "$out" | jq .
+        {
+          echo "digest=$(jq -r .digest <<< "$out")"
+          echo "reference=$(jq -r .reference <<< "$out")"
+          echo "tags=$(jq -r '.tags | join(",")' <<< "$out")"
+          echo "changed=$(jq -r .changed <<< "$out")"
+        } >> "$GITHUB_OUTPUT"
+        if [[ "$(jq -r .changed <<< "$out")" == "false" ]]; then
+          echo "::notice::Nothing to do: $(jq -r .reference <<< "$out") and its tags were already there."
+        fi

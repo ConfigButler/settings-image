@@ -2,41 +2,54 @@
 
 // Command settings-image turns a folder of settings into a content-addressed OCI image that a
 // kubelet can mount as volumes[].image, and pushes it to a registry.
-//
-// Only `version` exists so far; `build` and `push` follow.
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 
 	"github.com/ConfigButler/settings-image/internal/buildinfo"
 )
 
-// Exit codes. A usage error is 2, as for flag.ExitOnError.
+// Exit codes (docs/cli.md §6). A usage error is 2, as for flag.ExitOnError.
 const (
-	exitOK    = 0
-	exitUsage = 2
+	exitOK      = 0
+	exitError   = 1 // a retry might fix it: network, registry, Git
+	exitUsage   = 2
+	exitRefused = 3 // the input breaks a rule; a retry cannot help
 )
 
 const usage = `settings-image: build settings into a mountable OCI image
 
 Usage:
+  settings-image build <folder> [--oci-layout <dir>] [flags]
+                            build the image; write it nowhere, or to an OCI layout
+  settings-image push <folder> --repository <host/path> [flags]
+                            build the image and push it
   settings-image version    print the build this binary came from
+
+Run "settings-image build -h" for the flags. Docs: docs/cli.md.
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	code := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
 }
 
 // run is main without the process: it returns the exit code, so tests can drive it.
-func run(args []string, stdout, stderr io.Writer) int {
+func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprint(stderr, usage)
 		return exitUsage
 	}
 	switch args[0] {
+	case "build", "push":
+		return runBuild(ctx, args[0] == "push", args[1:], stdin, stdout, stderr)
 	case "version", "--version", "-version":
 		_, _ = fmt.Fprintf(stdout, "settings-image %s\n", buildinfo.Get())
 		return exitOK

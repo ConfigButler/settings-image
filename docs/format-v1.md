@@ -3,7 +3,7 @@
 _The contract between everything that writes a settings image and everything that reads one. A
 writer in this repository and a reader in another language are held to the same bytes by
 [§9's known answers](#9-known-answers) and, later, by the conformance corpus
-([plan.md](plan.md) phase 1)._
+([plan.md](plan.md) phase 2e)._
 
 Any change to the bytes described here is a **new layout version**, with one exception: an
 optional provenance field may be added (§7).
@@ -37,6 +37,9 @@ Two views, both on by default. A writer may switch `files/` off.
 |---|---|
 | `objects/<rel>` | every input file, **byte for byte**. Nothing is re-serialised, so a sealed (SOPS) document keeps its MAC valid |
 | `files/<name>/<key>` | for each `ConfigMap` document named `<name>`: one file per `data` key (the string's bytes), and one per `binaryData` key (base64-decoded) |
+
+A `ConfigMap` is a document with `apiVersion: v1` and `kind: ConfigMap`; `metadata.namespace` is
+ignored. A `kind: List` is not expanded. A `null` document is skipped.
 
 Which files are parsed: those whose extension, lowercased, is `.yaml`, `.yml` or `.json`. Each is
 read as a stream of YAML or JSON documents (Kubernetes' `NewYAMLOrJSONDecoder` semantics), and
@@ -91,7 +94,7 @@ layer (`application/vnd.oci.image.layer.v1.tar+gzip`), and these annotations:
 | Annotation | Value | Why |
 |---|---|---|
 | `org.opencontainers.image.created` | `1970-01-01T00:00:00Z` | oras-go stamps `time.Now()` when it is absent, and every build would then get a new digest |
-| `ai.configbutler.settings-image.layout` | `v1` | how a reader knows what it holds (§8) |
+| `ai.configbutler.settings-image.layout` | `v1` | how a reader knows what it holds ([plan.md](plan.md) phase 5) |
 | `org.opencontainers.image.source` | the source repository's URL, credentials removed (`https://github.com/<owner>/<repo>`). Omitted when unknown | ghcr.io links the package to that repository through it |
 
 **Nothing else goes in the manifest.** Every annotation is constant per source, so content
@@ -107,11 +110,13 @@ offending path and a reason. Every one of these is refused:
 | a symlink or hard link | an image volume must not reach outside its folder |
 | any other non-regular file | not settings |
 | a path that escapes the folder or archive (`..`, absolute) | not settings |
-| more than **10 MiB** in total, uncompressed | settings are small; a large tree is something else |
+| more than **10 MiB** in total, uncompressed, summed over the input files | settings are small; a large tree is something else |
 | an **empty** result | publishing it would roll every consumer to "no settings" |
 | a `.yaml`/`.yml`/`.json` file that does not parse | an unparseable file is where a Secret would hide |
+| two archive entries for one path, or a path that is both a file and a directory | not a folder |
 | a document of `kind: Secret` | a registry is not a secret store |
 | an unsafe `files/` name or key, or two documents writing one `files/` path | §3 |
+| a `ConfigMap` `data` value that is not a string, or `binaryData` that is not base64 | the apiserver refuses it too |
 
 Known limit of v1: a JSON or YAML file whose top level is not a mapping (a list, a scalar) does not
 decode, and is refused. Plain non-KRM settings files with those extensions hit this. A later layout
@@ -149,8 +154,9 @@ Per-commit facts live in an OCI referrer whose `subject` is the image manifest:
 A reader ignores fields it does not know, so a later writer can add one (the controller will add
 the Flux artifact digest it built from) without a new layout.
 
-Because the blob depends only on the commit, a rebuild attaches the **identical** referrer, not a
-second one. A revert back to an older digest attaches a second referrer to that digest, so
+Because the blob depends only on the commit, the ref, the repository and the path, a rebuild
+attaches the **identical** referrer, not a second one. The same commit built from two branches
+attaches two. A revert back to an older digest attaches a second referrer to that digest, so
 `oras discover` lists both commits that produced it.
 
 **On a registry without the referrers API** (ghcr.io; **verified**), oras-go stores referrers under

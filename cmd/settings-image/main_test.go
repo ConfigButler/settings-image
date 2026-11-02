@@ -30,7 +30,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if code := run(tt.args, &stdout, &stderr); code != tt.wantCode {
+			if code := run(t.Context(), tt.args, strings.NewReader(""), &stdout, &stderr); code != tt.wantCode {
 				t.Fatalf("exit code %d, want %d", code, tt.wantCode)
 			}
 			if !strings.Contains(stdout.String(), tt.wantStdout) {

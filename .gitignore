@@ -18,3 +18,6 @@ __debug*
 
 .claude/*
 /node_modules
+
+# Other repositories cloned for reference (task external)
+/external/

@@ -54,7 +54,7 @@ The root is where the Marketplace requires it, and it lets a workflow say
 | `files` | `'true'` | `--no-files` when `'false'` |
 | `provenance` | `'true'` | `--no-provenance` when `'false'` |
 | `username` | `${{ github.actor }}` | `SETTINGS_IMAGE_USERNAME` |
-| `password` | `${{ github.token }}` | `SETTINGS_IMAGE_PASSWORD` |
+| `password` | `${{ github.token }}` | `SETTINGS_IMAGE_PASSWORD`. When it is `''`, neither variable is set and the Docker config applies, as `docker/login-action` left it: set `password: ''` for a registry other than ghcr.io |
 | `plain-http` | `'false'` | `--plain-http` when `'true'` (a service-container registry) |
 
 **Outputs:** `digest`, `reference`, `tags` (comma-separated) and `changed`, read from the CLI's
@@ -100,8 +100,11 @@ downloads the one for its own version and checks it against the release's checks
   `plain-http: 'true'`. There are no tokens, so it is fork-safe. Afterwards `crane` reads the image
   back and checks:
   - the digest equals the Action's `digest` output;
-  - `crane export` lists the expected files with mode `0644`;
+  - the layer lists the expected files with mode `0644`;
   - the provenance referrer is listed under the fallback tag.
+
+  The prototype reads the registry with `curl` and `jq`, which every hosted runner has, instead of
+  installing `crane`.
 - **A second run of the Action in the same job** must report `changed: false` with the same digest.
 - **On `main` only:** the same, pushed to `ghcr.io/configbutler/settings-image-selftest` with
   `GITHUB_TOKEN`, so the real ghcr.io path stays green.

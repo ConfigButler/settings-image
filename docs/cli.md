@@ -31,7 +31,7 @@ settings-image version
 | `--branch-tag <branch>` | yes | yes | add the sanitised branch tag ([format-v1.md §8](format-v1.md#8-tags-and-pushing-in-order)); pushed last |
 | `--source <url>` | yes | yes | the repository URL for `org.opencontainers.image.source` and provenance; overrides detection (§3) |
 | `--no-files` | yes | yes | leave out the `files/` view |
-| `--no-provenance` | yes | yes | build no referrer, and skip Git entirely (also allows a folder outside Git) |
+| `--no-provenance` | yes | yes | build no referrer and no `sha-` tag, and skip Git entirely (also allows a folder outside Git); the source then comes from `--source` or `GITHUB_*` only |
 | `--allow-dirty` | yes | yes | build a folder with uncommitted changes; implies no provenance and no `sha-` tag |
 | `--allow-shallow` | yes | yes | accept a shallow clone (§3); provenance then names HEAD and says so in a warning |
 | `--plain-http` | | yes | for a local registry without TLS |
@@ -94,8 +94,8 @@ Progress and warnings go to **stderr**. With `--json`, **stdout** carries exactl
 ```
 
 - `provenance` and `commit` are `null` when there are none.
-- `changed` is `false` when, before the push, every tag already pointed at this digest. That is the
-  "nothing to do" case, and the Action reports it.
+- `changed` is `false` when, before the push, the image already existed in the repository **and**
+  every tag already pointed at it. That is the "nothing to do" case, and the Action reports it.
 - `build` gives the same object without `changed`, and with `repository` set to `--repository` if
   given.
 
@@ -108,7 +108,7 @@ Without `--json`, stdout carries only the `reference`, so `ref=$(settings-image 
 | 0 | built (and pushed), or nothing to do |
 | 1 | an error that a retry might fix: network, registry, Git |
 | 2 | usage: unknown command or flag, missing argument |
-| 3 | **refused**: the folder breaks a rule of [format-v1.md §6](format-v1.md#6-refusals), or a tag is invalid, or the folder is dirty or the clone shallow. Retrying cannot help; the message names the path |
+| 3 | **refused**: the folder breaks a rule of [format-v1.md §6](format-v1.md#6-refusals), or a tag is invalid, or the folder is dirty, outside Git (without `--no-provenance`), or the clone shallow. Retrying cannot help; the message names the path |
 
 ## 7. Not in the CLI
 

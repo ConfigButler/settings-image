@@ -3,8 +3,9 @@
 Build a folder of settings into a small, reproducible OCI image, and mount it next to your
 application with a Kubernetes [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/).
 
-> **Status: bootstrapping.** The repository has its toolchain, CI and release process, and its
-> design. The CLI only answers `version` so far. See [docs/plan.md](docs/plan.md).
+> **Status: prototype.** `settings-image build` and `push` work and match the format's known
+> answers, and a composite GitHub Action runs them. Releases do not carry binaries yet. See
+> [docs/plan.md](docs/plan.md).
 
 ## Why now: Kubernetes can mount an image as a volume
 
@@ -59,6 +60,27 @@ settings-image is being built to produce the real thing, and to add what setting
 - **A GitHub Action**, so a commit that changes the folder becomes a new image.
 
 It understands Kubernetes objects (KRM) first: a `ConfigMap`'s keys also appear as plain files.
+
+## Use
+
+```bash
+# Build without pushing: prints the digest, refuses bad input with exit code 3.
+settings-image build configs/shop
+
+# Push, with provenance from Git and a moving branch tag set last.
+settings-image push configs/shop --repository ghcr.io/acme/shop-settings --branch-tag main
+```
+
+In a workflow (the Action builds the CLI from its own source; check out with `fetch-depth: 0`):
+
+```yaml
+- uses: ConfigButler/settings-image@main # @v0 once released
+  with:
+    path: configs/shop
+    repository: ghcr.io/acme/shop-settings
+```
+
+The flags are in [docs/cli.md](docs/cli.md), the inputs in [docs/github-action.md](docs/github-action.md).
 
 ## Docs
 

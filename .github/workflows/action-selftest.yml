@@ -1,0 +1,111 @@
+# Runs the Action from this checkout (uses: ./) against testdata/selftest, and reads the result
+# back (docs/github-action.md §5).
+#
+# - Every run: a registry:2 service container, no tokens, so it is fork-safe. The Action runs
+#   twice; the second run must report changed=false with the same digest.
+# - main only: the same against ghcr.io, with the workflow's own GITHUB_TOKEN.
+name: Action self-test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-selftest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  local-registry:
+    name: Local registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    env:
+      REPOSITORY: localhost:5000/selftest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the CLI refuses a shallow clone
+          persist-credentials: false
+
+      - name: Push (first)
+        id: first
+        uses: ./
+        with:
+          path: testdata/selftest
+          repository: ${{ env.REPOSITORY }}
+          plain-http: 'true'
+          password: ''
+
+      - name: Push (second, nothing to do)
+        id: second
+        uses: ./
+        with:
+          path: testdata/selftest
+          repository: ${{ env.REPOSITORY }}
+          plain-http: 'true'
+          password: ''
+
+      - name: Read the image back
+        env:
+          FIRST_DIGEST: ${{ steps.first.outputs.digest }}
+          SECOND_DIGEST: ${{ steps.second.outputs.digest }}
+          SECOND_CHANGED: ${{ steps.second.outputs.changed }}
+        run: |
+          set -euo pipefail
+          api="http://${REPOSITORY%%/*}/v2/${REPOSITORY#*/}"
+          test "$FIRST_DIGEST" = "$SECOND_DIGEST" || { echo "digests differ"; exit 1; }
+          test "$SECOND_CHANGED" = "false" || { echo "second run changed=$SECOND_CHANGED"; exit 1; }
+
+          accept='application/vnd.oci.image.manifest.v1+json'
+          curl -fsS -H "Accept: $accept" "$api/manifests/$FIRST_DIGEST" -o manifest.json
+          got="sha256:$(sha256sum manifest.json | cut -d' ' -f1)"
+          test "$got" = "$FIRST_DIGEST" || { echo "registry digest $got"; exit 1; }
+
+          layer="$(jq -r '.layers[0].digest' manifest.json)"
+          curl -fsSL "$api/blobs/$layer" | tar tvz | tee listing.txt
+          grep -q ' files/selftest/greeting.txt$' listing.txt
+          grep -q ' objects/notes.txt$' listing.txt
+          if grep '^-' listing.txt | grep -v '^-rw-r--r-- '; then echo "a file is not 0644"; exit 1; fi
+
+          fallback="sha256-${FIRST_DIGEST#sha256:}"
+          curl -fsS "$api/tags/list" | jq -e --arg t "$fallback" '.tags | index($t)' > /dev/null \
+            || { echo "no provenance under the fallback tag $fallback"; exit 1; }
+
+  ghcr:
+    name: ghcr.io
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push
+        id: push
+        uses: ./
+        with:
+          path: testdata/selftest
+          repository: ghcr.io/configbutler/settings-image-selftest
+
+      - name: Report
+        env:
+          REFERENCE: ${{ steps.push.outputs.reference }}
+          CHANGED: ${{ steps.push.outputs.changed }}
+        run: echo "pushed $REFERENCE (changed=$CHANGED)"
