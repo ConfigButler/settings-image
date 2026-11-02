@@ -230,9 +230,17 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # DLV_VERSION -> https://github.com/go-delve/delve/releases
 # GOPLS_VERSION -> https://github.com/golang/tools/releases
 # STATICCHECK_VERSION -> https://github.com/dominikh/go-tools/releases
+# CODEX_VERSION -> https://www.npmjs.com/package/@openai/codex?activeTab=versions (the `latest`
+#   dist-tag; the others are alpha and per-platform builds)
+# CLAUDE_CODE_VERSION -> https://www.npmjs.com/package/@anthropic-ai/claude-code?activeTab=versions
+#   (the `stable` dist-tag). DISABLE_AUTOUPDATER keeps it on this pin: the vscode user cannot
+#   write the root-owned global npm prefix anyway, so a self-update could only fail.
 ENV DLV_VERSION=v1.27.2 \
     GOPLS_VERSION=v0.24.0 \
-    STATICCHECK_VERSION=v0.8.2
+    STATICCHECK_VERSION=v0.8.2 \
+    CODEX_VERSION=0.166.0 \
+    CLAUDE_CODE_VERSION=2.1.309 \
+    DISABLE_AUTOUPDATER=1
 
 RUN apt-get update \
     && apt-get -y install --no-install-recommends bash-completion \
@@ -262,6 +270,11 @@ RUN go install github.com/go-delve/delve/cmd/dlv@${DLV_VERSION} \
     && go install golang.org/x/tools/gopls@${GOPLS_VERSION} \
     && go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION} \
     && go clean -cache
+
+# The Codex and Claude Code CLIs. Their logins live in ~/.codex and ~/.claude (+ ~/.claude.json),
+# which devcontainer.json keeps on volumes, so they survive a rebuild.
+RUN npm install -g "@openai/codex@${CODEX_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && npm cache clean --force
 
 # A non-root vscode user in the godev and docker groups.
 RUN groupadd --gid 1000 vscode \
