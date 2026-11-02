@@ -1,0 +1,6 @@
+# Allowlist: ignore everything, then re-include only what a Dockerfile COPYs.
+**
+
+# .devcontainer/Dockerfile pre-downloads modules.
+!go.mod
+!go.sum

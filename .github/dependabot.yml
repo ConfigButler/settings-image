@@ -1,0 +1,39 @@
+version: 2
+
+# One pull request a week for every ecosystem, not one per ecosystem, as in gitops-reverser.
+# `commit-message` sits on the group (it is group-only in a multi-ecosystem setup) and titles the
+# PR `chore(deps): …`, which the Conventional Commit title check accepts and release-please hides.
+multi-ecosystem-groups:
+  all-dependencies:
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+
+  - package-ecosystem: "docker"
+    # The devcontainer/CI base image. The tool versions in its ENV block are plain strings no
+    # ecosystem can see; they stay a manual bump against the release URLs listed beside them.
+    directory: "/.devcontainer"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+
+  - package-ecosystem: "devcontainers"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"

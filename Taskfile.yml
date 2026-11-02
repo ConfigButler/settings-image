@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: '3'
+
+# Every check is a task, and CI runs these tasks inside the devcontainer's `ci` stage. So a red CI
+# job reproduces locally with the same command, and changing what CI checks means editing this file.
+
+# Local-only overrides, gitignored.
+dotenv: ['.env']
+
+run: once
+
+set:
+  - errexit
+  - nounset
+  - pipefail
+
+vars:
+  GOLANGCI_LINT: '{{.GOLANGCI_LINT | default "golangci-lint"}}'
+  BIN: bin/settings-image
+  # ONE version, from release-please's manifest, never from a tag (internal/buildinfo).
+  VERSION:
+    sh: jq -r '."."' .release-please-manifest.json
+  GIT_COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+  GIT_DIRTY:
+    sh: test -z "$(git status --porcelain 2>/dev/null)" && echo 0 || echo 1
+  LDFLAGS: >-
+    -s -w
+    -X github.com/ConfigButler/settings-image/internal/buildinfo.version={{.VERSION}}
+    -X github.com/ConfigButler/settings-image/internal/buildinfo.gitCommit={{.GIT_COMMIT}}
+    -X github.com/ConfigButler/settings-image/internal/buildinfo.gitDirty={{.GIT_DIRTY}}
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  fmt:
+    desc: Format Go code (golangci-lint's formatters, the same ones lint checks)
+    cmds:
+      - '{{.GOLANGCI_LINT}} fmt'
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run the unit tests
+    deps: [vet]
+    cmds:
+      - go test ./... -coverprofile cover.out
+
+  build:
+    desc: Build the CLI into bin/, with the build metadata baked in
+    cmds:
+      - CGO_ENABLED=0 go build -trimpath -ldflags '{{.LDFLAGS}} -X github.com/ConfigButler/settings-image/internal/buildinfo.buildDate={{now | date "2006-01-02T15:04:05Z07:00"}}' -o {{.BIN}} ./cmd/settings-image
+      - ./{{.BIN}} version
+
+  lint:
+    desc: Run every linter (Go, go.mod, Dockerfiles, workflows, markdown)
+    deps:
+      - lint-golang
+      - lint-gomod
+      - lint-dockerfiles
+      - lint-actions
+      - lint-markdown
+
+  lint-golang:
+    desc: Run golangci-lint
+    sources:
+      - '**/*.go'
+      - .golangci.yml
+      - go.mod
+      - go.sum
+    cmds:
+      - '{{.GOLANGCI_LINT}} run'
+
+  lint-gomod:
+    desc: Check that go.mod and go.sum are tidy
+    # `-diff` reports what tidying would change and exits non-zero, without writing anything.
+    cmds:
+      - go mod tidy -diff
+
+  lint-dockerfiles:
+    desc: Lint Dockerfiles with hadolint
+    sources:
+      - .devcontainer/Dockerfile
+      - .hadolint.yaml
+    cmds:
+      - hadolint .devcontainer/Dockerfile
+
+  lint-actions:
+    desc: Lint GitHub Actions workflows with actionlint (and shellcheck, when installed)
+    sources:
+      - .github/workflows/*.yml
+    cmds:
+      - actionlint
+
+  lint-markdown:
+    desc: Markdown structure (markdownlint-cli2), over every tracked file
+    # An explicit file list from git, never a recursive glob: it keeps gitignored trees out.
+    cmds:
+      - git ls-files -z '*.md' | xargs -0 -r markdownlint-cli2
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - rm -rf bin cover.out .task

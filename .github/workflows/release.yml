@@ -1,0 +1,50 @@
+# Trusted pipeline for pushes to main: run the full validation (ci.yml, the same jobs a PR gets),
+# and only once it is green let release-please open or update the release PR, or cut a release.
+# Nothing here runs for pull requests, so write tokens never meet unreviewed code.
+#
+# release-please lives here rather than behind a tag trigger: tags created with GITHUB_TOKEN never
+# trigger other workflows, so anything published for a release must chain behind it in this run.
+# Publishing the CLI binaries and the action is a later job here.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Never cancel a release mid-run; a follow-up push queues behind it.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: ci
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

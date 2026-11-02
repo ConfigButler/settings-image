@@ -1,0 +1,20 @@
+# Build output
+/bin/
+*.test
+*.out
+
+# Local settings and secrets
+.env
+*.env
+
+# Task's fingerprint cache
+.task/
+
+# Editors
+.idea
+*.swp
+*~
+__debug*
+
+.claude/*
+/node_modules
