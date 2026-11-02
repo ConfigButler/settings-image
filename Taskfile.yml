@@ -59,6 +59,24 @@ tasks:
       - CGO_ENABLED=0 go build -trimpath -ldflags '{{.LDFLAGS}} -X github.com/ConfigButler/settings-image/internal/buildinfo.buildDate={{now | date "2006-01-02T15:04:05Z07:00"}}' -o {{.BIN}} ./cmd/settings-image
       - ./{{.BIN}} version
 
+  dist:
+    desc: Cross-build the release binaries into dist/, with a sha256sums file (release.yml attaches them)
+    vars:
+      # The commit's time, not the clock's: two builds of one commit give the same bytes.
+      COMMIT_DATE:
+        sh: git log -1 --format=%cI 2>/dev/null || echo unknown
+      TARGETS: linux/amd64 linux/arm64 darwin/arm64
+    cmds:
+      - rm -rf dist && mkdir -p dist
+      - for: { var: TARGETS, split: ' ' }
+        cmd: >-
+          CGO_ENABLED=0 GOOS={{splitList "/" .ITEM | first}} GOARCH={{splitList "/" .ITEM | last}}
+          go build -trimpath -ldflags '{{.LDFLAGS}} -X github.com/ConfigButler/settings-image/internal/buildinfo.buildDate={{.COMMIT_DATE}}'
+          -o dist/settings-image_{{splitList "/" .ITEM | first}}_{{splitList "/" .ITEM | last}} ./cmd/settings-image
+      - cd dist && sha256sum settings-image_* > settings-image.sha256sums
+      # The binary must say which release it is: a broken ldflags path would ship "dev".
+      - ./dist/settings-image_linux_amd64 version | tee /dev/stderr | grep -qF 'version={{.VERSION}} '
+
   lint:
     desc: Run every linter (Go, go.mod, Dockerfiles, workflows, markdown)
     deps:
@@ -126,4 +144,4 @@ tasks:
   clean:
     desc: Remove build output
     cmds:
-      - rm -rf bin cover.out .task
+      - rm -rf bin dist cover.out .task

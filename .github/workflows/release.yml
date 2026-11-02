@@ -1,10 +1,14 @@
 # Trusted pipeline for pushes to main: run the full validation (ci.yml, the same jobs a PR gets),
-# and only once it is green let release-please open or update the release PR, or cut a release.
-# Nothing here runs for pull requests, so write tokens never meet unreviewed code.
+# and only once it is green let release-please cut a release, attach the CLI binaries, publish it,
+# and move the floating major tag. Nothing here runs for pull requests, so write tokens never meet
+# unreviewed code. Modelled on gitops-reverser's release.yml.
 #
 # release-please lives here rather than behind a tag trigger: tags created with GITHUB_TOKEN never
 # trigger other workflows, so anything published for a release must chain behind it in this run.
-# Publishing the CLI binaries and the action is a later job here.
+#
+# A release is cut as a draft (release-please-config.json), every asset is attached to the draft,
+# and only then is it published. A failed publish job leaves an unpublished draft, never a
+# half-populated release; and immutable releases, once enabled, refuse assets after publishing.
 name: Release
 
 on:
@@ -40,6 +44,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
+      major: ${{ steps.release.outputs.major }}
     steps:
       - name: Run release-please
         id: release
@@ -48,3 +53,180 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          # Cut releases here, but do not open the next release PR: the release is still a draft,
+          # which release-please's "latest release" lookup cannot see, so a PR computed now would
+          # cover the whole history. release-pr.yml refreshes the PR on other pushes, and the
+          # release-please-pr job below opens the next one once the release is published.
+          skip-github-pull-request: true
+
+  # Build, checksum, sign and attest the CLI binaries, and attach them to the draft release. The
+  # build is `task dist` in the CI image, so it reproduces locally with the same command; the
+  # binaries of one commit are byte for byte the same on every build.
+  #
+  # Two ways to verify, as in gitops-reverser: `gh attestation verify` is the stronger claim, and
+  # the sha256sums file is what a `curl | sha256sum -c` line in another CI can use without a token.
+  publish-cli:
+    name: Publish CLI binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [ci, release-please]
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write # upload release assets
+      packages: read # pull the CI image
+      id-token: write # cosign keyless signing + attestation OIDC
+      attestations: write
+    env:
+      CI_CONTAINER: ${{ needs.ci.outputs.ci-image }}
+      CI_WORKDIR: /workspaces/${{ github.event.repository.name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Login to Docker registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build the binaries for every published platform
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:${CI_WORKDIR}" \
+            -w "${CI_WORKDIR}" \
+            "${CI_CONTAINER}" \
+            bash -lc '
+              set -e
+              git config --global --add safe.directory "$PWD"
+              task dist
+            '
+          # task dist checks the version the binary prints against the manifest; this checks the
+          # manifest against the release that was just cut.
+          ./dist/settings-image_linux_amd64 version | grep -qF "version=${VERSION} " || {
+            echo "the binary does not report ${VERSION}" >&2
+            exit 1
+          }
+          ls -l dist
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      # dist/ was written by the container as root, so the signature bundles go beside it.
+      - name: Sign the checksums file (cosign keyless)
+        run: cosign sign-blob --bundle settings-image.sha256sums.sigstore.json --yes dist/settings-image.sha256sums
+
+      - name: Attest SLSA provenance for the binaries
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/settings-image_*
+
+      - name: Rename provenance bundle to the Scorecard-recognized suffix
+        run: cp "${{ steps.attest.outputs.bundle-path }}" settings-image.intoto.jsonl
+
+      - name: Upload the binaries as release assets
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          draft: true
+          append_body: true
+          files: |
+            dist/settings-image_linux_amd64
+            dist/settings-image_linux_arm64
+            dist/settings-image_darwin_arm64
+            dist/settings-image.sha256sums
+            settings-image.sha256sums.sigstore.json
+            settings-image.intoto.jsonl
+          body: |
+            ## GitHub Action
+            ```yaml
+            - uses: ConfigButler/settings-image@${{ needs.release-please.outputs.tag_name }}
+              with:
+                path: configs/shop
+                repository: ghcr.io/acme/shop-settings
+            ```
+            ## CLI
+            Binaries for linux/amd64, linux/arm64 and darwin/arm64, with a checksums file:
+            ```bash
+            curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.tag_name }}/settings-image_linux_amd64
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.tag_name }}/settings-image.sha256sums | sha256sum -c --ignore-missing
+            ```
+            Verify where a binary was built:
+            ```bash
+            gh attestation verify settings-image_linux_amd64 --repo ${{ github.repository }}
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish the release only after every asset is attached. Publishing creates the tag.
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [release-please, publish-cli]
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release edit "${TAG_NAME}" --draft=false --repo "${{ github.repository }}"
+
+  # Move the floating major tag (v0, later v1) to the release, the Actions convention behind
+  # `uses: ConfigButler/settings-image@v0` (docs/github-action.md §4). Only a tag is force-pushed,
+  # never a branch.
+  move-major-tag:
+    name: Move the major tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [release-please, publish-release]
+    if: needs.publish-release.result == 'success'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Point the major tag at the release
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          MAJOR: v${{ needs.release-please.outputs.major }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          commit="$(git rev-parse "${TAG_NAME}^{commit}")"
+          git tag --force "${MAJOR}" "${commit}"
+          git push --force origin "refs/tags/${MAJOR}"
+          echo "${MAJOR} -> ${TAG_NAME} (${commit})"
+
+  # The PR half of release-please, after the release is published, so it sees that release instead
+  # of the draft. It only opens or refreshes the next release PR; it never tags or releases.
+  release-please-pr:
+    name: Release Please (PR)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [publish-release]
+    if: needs.publish-release.result == 'success'
+    # Shared with release-pr.yml, so the two never rewrite the PR branch at once.
+    concurrency:
+      group: release-pr-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Open or refresh the next release PR
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true

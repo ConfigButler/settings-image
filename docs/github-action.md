@@ -75,8 +75,9 @@ hole in composite actions.)
 The binary is then always exactly the ref the workflow pinned, whether a tag, a branch or a SHA, and
 it needs no release to exist. The cost is a Go setup, about 10–20 s with a warm cache.
 
-**Phase 2b: a released binary.** Once releases carry binaries (plan.md phase 2d), the Action
-downloads the one for its own version and checks it against the release's checksums.
+**Phase 2b: a released binary (not built yet).** Releases carry binaries (plan.md phase 2d,
+`settings-image_<os>_<arch>` and `settings-image.sha256sums`). The Action is to download the one for
+its own version and check it against that file.
 
 - `action.yml` has an input `version`, whose default is the released version. release-please keeps
   that default current through its `extra-files` generic updater: the line carries a

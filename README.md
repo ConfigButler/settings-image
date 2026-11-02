@@ -3,8 +3,9 @@
 Build a folder of settings into a small, reproducible OCI image, and mount it next to your
 application with a Kubernetes [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/).
 
-> **Status: prototype.** `settings-image build` and `push` work and match the format's known
-> answers, and a composite GitHub Action runs them. Releases do not carry binaries yet. See
+> **Status: prototype, before its first release.** `settings-image build` and `push` work and
+> match the format's known answers, and a composite GitHub Action runs them. Releases carry CLI
+> binaries from v0.1.0; until it is out, use `ConfigButler/settings-image@main`. See
 > [docs/plan.md](docs/plan.md).
 
 ## Why now: Kubernetes can mount an image as a volume
@@ -71,26 +72,95 @@ The image holds `resources/` and `raw/` as they are in Git, plus `configmaps/<na
 ConfigMap (unless annotated `settings-image.configbutler.ai/files: "false"`). The contract is
 [docs/format-v2.md](docs/format-v2.md).
 
-## Use
+## Use it in your CI
 
-```bash
-# Build without pushing: prints the digest, refuses bad input with exit code 3.
-settings-image build configs/shop
+### 1. Lay out the folder
 
-# Push, with provenance from Git and a moving branch tag set last.
-settings-image push configs/shop --repository ghcr.io/acme/shop-settings --branch-tag main
+```text
+configs/shop/
+  resources/app.yaml        a ConfigMap: its keys become configmaps/shop-settings/<key>
+  raw/pricing.toml          anything else, as is
 ```
 
-In a workflow (the Action builds the CLI from its own source; check out with `fetch-depth: 0`):
+Check it locally with `settings-image build configs/shop`: it prints the digest, or refuses bad
+input with exit code 3 and names the file.
+
+### 2. Publish on every commit that changes it (GitHub Actions)
 
 ```yaml
-- uses: ConfigButler/settings-image@main # @v0 once released
-  with:
-    path: configs/shop
-    repository: ghcr.io/acme/shop-settings
+# .github/workflows/shop-settings.yml
+name: Shop settings
+
+on:
+  push:
+    branches: [main]
+    paths: [configs/shop/**]
+
+permissions:
+  contents: read
+  packages: write # push to ghcr.io with the workflow's own token
+
+# Publish in commit order: a later run must not finish before an earlier one.
+concurrency:
+  group: shop-settings
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # provenance names the commit that last changed the folder
+      - id: settings
+        uses: ConfigButler/settings-image@v0 # or pin a release SHA
+        with:
+          path: configs/shop
+          repository: ghcr.io/${{ github.repository_owner }}/shop-settings
+      - run: echo "Mount ${{ steps.settings.outputs.reference }}" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-The flags are in [docs/cli.md](docs/cli.md), the inputs in [docs/github-action.md](docs/github-action.md).
+A commit that touches other folders runs nothing, and a rebuild of the same folder gives the same
+digest (`changed: false`). Each image gets a `sha-<commit>` tag, a branch tag (`main`), and the
+commit and its author as an OCI referrer. All inputs and outputs:
+[docs/github-action.md](docs/github-action.md).
+
+### Any other CI
+
+Download the CLI from a [release](https://github.com/ConfigButler/settings-image/releases)
+(linux/amd64, linux/arm64, darwin/arm64), check it, and push:
+
+```bash
+VERSION=v0.1.0
+base="https://github.com/ConfigButler/settings-image/releases/download/${VERSION}"
+curl -fsSLO "${base}/settings-image_linux_amd64"
+curl -fsSL "${base}/settings-image.sha256sums" | sha256sum -c --ignore-missing
+install -m 0755 settings-image_linux_amd64 /usr/local/bin/settings-image
+
+echo "${REGISTRY_PASSWORD}" | settings-image push configs/shop \
+  --repository registry.example.com/acme/shop-settings \
+  --username ci --password-stdin --branch-tag "${CI_COMMIT_BRANCH}"
+```
+
+It needs a full clone (not shallow) and a clean folder; the flags are in [docs/cli.md](docs/cli.md).
+
+### 3. Mount it
+
+```yaml
+spec:
+  containers:
+    - name: shop
+      volumeMounts:
+        - { name: settings, mountPath: /etc/shop, readOnly: true, subPath: configmaps/shop-settings }
+        - { name: settings, mountPath: /etc/shop-raw, readOnly: true, subPath: raw }
+  volumes:
+    - name: settings
+      image:
+        reference: ghcr.io/acme/shop-settings@sha256:80b52437… # the digest the run printed
+```
+
+Always by digest: the new digest goes into the Deployment like any image bump (by a PR, or by Flux
+image automation following the branch tag), and `kubectl rollout undo` rolls the settings back.
 
 ## Docs
 

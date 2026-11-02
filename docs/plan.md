@@ -91,15 +91,18 @@ from both registries has the expected files, modes, annotations and referrer.
    with `testdata/selftest/`.
    - **Observe:** a green run on a pull request (the service registry) and on `main` (ghcr.io).
      The second invocation in the job reports `changed: false`.
-4. **2d, releases carry binaries.**
-   - `release.yml` gains a job after release-please that builds `linux/amd64`, `linux/arm64` and
-     `darwin/arm64` with `task build` (`GOOS`/`GOARCH`), writes `checksums.txt`, and attaches all of
-     them to the release.
-   - A second job moves the floating `v0` tag.
-   - The Action's `version` input and its release-please marker, as
-     [github-action.md §3–§4](github-action.md#3-where-the-binary-comes-from).
-   - **Observe:** after a release, the self-test passes using the downloaded binary, and `@v0`
-     resolves to the release commit.
+4. **2d, releases carry binaries** (built, not yet observed: no release has been cut).
+   - Release-please cuts a **draft**; `publish-cli` runs `task dist` in the CI image
+     (`linux/amd64`, `linux/arm64`, `darwin/arm64`, reproducible, plus
+     `settings-image.sha256sums`), signs the checksums with cosign, attests SLSA provenance, and
+     attaches it all; `publish-release` publishes the draft; `move-major-tag` moves `v0`. As in
+     gitops-reverser, `release-pr.yml` refreshes the release PR without waiting for CI.
+   - Not yet: the Action's `version` input that downloads the binary instead of building it
+     ([github-action.md §3](github-action.md#3-where-the-binary-comes-from)). It still builds
+     from its own source, which is right for every ref, at 10–20 s.
+   - **Observe:** after the first release, the assets are on it, `sha256sum -c` and
+     `gh attestation verify` pass on a downloaded binary, it prints the release's version, and
+     `@v0` resolves to the release commit.
 5. **2e, the conformance corpus.** `testdata/conformance/<case>/` holds an `input/` folder, the
    output of `settings-image build --oci-layout`, and an `expected.json` (digest, tree, provenance
    or refusal). Required cases:
