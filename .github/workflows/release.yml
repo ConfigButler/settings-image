@@ -9,11 +9,20 @@
 # A release is cut as a draft (release-please-config.json), every asset is attached to the draft,
 # and only then is it published. A failed publish job leaves an unpublished draft, never a
 # half-populated release; and immutable releases, once enabled, refuse assets after publishing.
+#
+# A draft left behind by a failed run is finished by hand: run this workflow (workflow_dispatch)
+# with its tag. It builds from the draft's own commit, attaches the assets, publishes and moves the
+# major tag. release-please has already marked that release as tagged, so a new push would not.
 name: Release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing draft release to finish, e.g. v0.1.0
+        required: true
 
 permissions:
   contents: read
@@ -37,14 +46,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: ci
+    if: github.event_name == 'push'
     permissions:
       contents: write
       pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-      major: ${{ steps.release.outputs.major }}
     steps:
       - name: Run release-please
         id: release
@@ -59,6 +67,50 @@ jobs:
           # release-please-pr job below opens the next one once the release is published.
           skip-github-pull-request: true
 
+  # Which release the publish jobs finish: the one release-please just cut, or the draft named by
+  # workflow_dispatch. Either way the binaries are built from the release's own commit.
+  target:
+    name: Release target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [ci, release-please]
+    if: >-
+      always() && needs.ci.result == 'success' &&
+      (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: write # a read-only token cannot see draft releases
+    outputs:
+      tag_name: ${{ steps.target.outputs.tag_name }}
+      version: ${{ steps.target.outputs.version }}
+      major: ${{ steps.target.outputs.major }}
+      commit: ${{ steps.target.outputs.commit }}
+    steps:
+      - name: Resolve the release
+        id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          release="$(gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft,targetCommitish)"
+          if [[ "$(jq -r .isDraft <<< "${release}")" != "true" ]]; then
+            echo "::error::${TAG_NAME} is not a draft release; a published release is not changed" >&2
+            exit 1
+          fi
+          commit="$(jq -r .targetCommitish <<< "${release}")"
+          if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::${TAG_NAME} targets ${commit}, not a commit SHA" >&2
+            exit 1
+          fi
+          version="${TAG_NAME#v}"
+          {
+            echo "tag_name=${TAG_NAME}"
+            echo "version=${version}"
+            echo "major=${version%%.*}"
+            echo "commit=${commit}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Finishing ${TAG_NAME} (${commit})"
+
   # Build, checksum, sign and attest the CLI binaries, and attach them to the draft release. The
   # build is `task dist` in the CI image, so it reproduces locally with the same command; the
   # binaries of one commit are byte for byte the same on every build.
@@ -69,8 +121,7 @@ jobs:
     name: Publish CLI binaries
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [ci, release-please]
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: [ci, target]
     permissions:
       contents: write # upload release assets
       packages: read # pull the CI image
@@ -80,9 +131,10 @@ jobs:
       CI_CONTAINER: ${{ needs.ci.outputs.ci-image }}
       CI_WORKDIR: /workspaces/${{ github.event.repository.name }}
     steps:
-      - name: Checkout code
+      - name: Checkout the release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.target.outputs.commit }}
           persist-credentials: false
 
       - name: Login to Docker registry
@@ -91,7 +143,7 @@ jobs:
 
       - name: Build the binaries for every published platform
         env:
-          VERSION: ${{ needs.release-please.outputs.version }}
+          VERSION: ${{ needs.target.outputs.version }}
         run: |
           docker run --rm \
             -v "${GITHUB_WORKSPACE}:${CI_WORKDIR}" \
@@ -119,21 +171,27 @@ jobs:
       - name: Sign the checksums file (cosign keyless)
         run: cosign sign-blob --bundle settings-image.sha256sums.sigstore.json --yes dist/settings-image.sha256sums
 
+      # GitHub stores attestations only for a public repository on this plan; until settings-image
+      # is public the cosign-signed checksums are the only verification.
       - name: Attest SLSA provenance for the binaries
         id: attest
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/settings-image_*
 
       - name: Rename provenance bundle to the Scorecard-recognized suffix
+        if: ${{ !github.event.repository.private }}
         run: cp "${{ steps.attest.outputs.bundle-path }}" settings-image.intoto.jsonl
 
       - name: Upload the binaries as release assets
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          tag_name: ${{ needs.target.outputs.tag_name }}
           draft: true
           append_body: true
+          # The .intoto.jsonl is absent while the repository is private (no attestation).
+          fail_on_unmatched_files: false
           files: |
             dist/settings-image_linux_amd64
             dist/settings-image_linux_arm64
@@ -144,7 +202,7 @@ jobs:
           body: |
             ## GitHub Action
             ```yaml
-            - uses: ConfigButler/settings-image@${{ needs.release-please.outputs.tag_name }}
+            - uses: ConfigButler/settings-image@${{ needs.target.outputs.tag_name }}
               with:
                 path: configs/shop
                 repository: ghcr.io/acme/shop-settings
@@ -152,10 +210,18 @@ jobs:
             ## CLI
             Binaries for linux/amd64, linux/arm64 and darwin/arm64, with a checksums file:
             ```bash
-            curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.tag_name }}/settings-image_linux_amd64
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.tag_name }}/settings-image.sha256sums | sha256sum -c --ignore-missing
+            curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ needs.target.outputs.tag_name }}/settings-image_linux_amd64
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ needs.target.outputs.tag_name }}/settings-image.sha256sums | sha256sum -c --ignore-missing
             ```
-            Verify where a binary was built:
+            Verify the checksums file was signed by this repository's release workflow:
+            ```bash
+            curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ needs.target.outputs.tag_name }}/settings-image.sha256sums.sigstore.json
+            cosign verify-blob settings-image.sha256sums \
+              --bundle settings-image.sha256sums.sigstore.json \
+              --certificate-identity-regexp '^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            ```
+            Once the repository is public, a binary also carries SLSA provenance:
             ```bash
             gh attestation verify settings-image_linux_amd64 --repo ${{ github.repository }}
             ```
@@ -167,15 +233,14 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [release-please, publish-cli]
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: [target, publish-cli]
     permissions:
       contents: write
     steps:
       - name: Publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          TAG_NAME: ${{ needs.target.outputs.tag_name }}
         run: gh release edit "${TAG_NAME}" --draft=false --repo "${{ github.repository }}"
 
   # Move the floating major tag (v0, later v1) to the release, the Actions convention behind
@@ -185,8 +250,7 @@ jobs:
     name: Move the major tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [release-please, publish-release]
-    if: needs.publish-release.result == 'success'
+    needs: [target, publish-release]
     permissions:
       contents: write
     steps:
@@ -197,8 +261,8 @@ jobs:
 
       - name: Point the major tag at the release
         env:
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-          MAJOR: v${{ needs.release-please.outputs.major }}
+          TAG_NAME: ${{ needs.target.outputs.tag_name }}
+          MAJOR: v${{ needs.target.outputs.major }}
         run: |
           set -euo pipefail
           git fetch --force --tags origin
