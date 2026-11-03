@@ -103,10 +103,18 @@ from both registries has the expected files, modes, annotations and referrer.
    - **Observed** on v0.1.0: the assets are on the release, `sha256sum -c` and `cosign
      verify-blob` pass on a downloaded binary, it prints `version=0.1.0`, and `v0` resolves to the
      release commit.
-   - **SLSA attestations wait for the repository to go public:** GitHub refuses them for a private
-     repository on the organisation's plan, so `publish-cli` skips them while it is private. The
-     first v0.1.0 run failed on exactly that and left an empty draft; `workflow_dispatch` with
-     `tag: v0.1.0` finished it. That is the recovery for any draft a failed run leaves behind.
+   - **SLSA attestations need a public repository** on the organisation's plan. The first v0.1.0
+     run failed on exactly that while the repository was private, and left an empty draft;
+     `workflow_dispatch` with `tag: v0.1.0` finished it, without attestations. That is the
+     recovery for any draft a failed run leaves behind. Since the repository went public
+     (2026-11-03) `publish-cli` always attests, so v0.1.0 is the only release without provenance.
+   - **Immutable releases are enabled** (2026-11-03): a published release's assets and tag are
+     locked, so a broken release is fixed by a new patch release, never in place. The workflow
+     already attaches everything to the draft before publishing; `v0` is a plain tag, not a
+     release, so it still moves.
+   - **Next to observe:** the first release on the normal path, with no manual step (0.1.1,
+     release PR #4): `gh attestation verify` passes on a downloaded binary, and `gh release
+     verify` confirms the release is immutable.
 5. **2e, the conformance corpus.** `testdata/conformance/<case>/` holds an `input/` folder, the
    output of `settings-image build --oci-layout`, and an `expected.json` (digest, tree, provenance
    or refusal). Required cases:
@@ -161,8 +169,9 @@ it is built here.
 
 ## Decided by the maintainer (2026-11-02)
 
-- **The repository goes public once the first version works** (phase 2). Until then the Action can
-  only be used from inside the ConfigButler organisation, and the Marketplace waits.
+- **The repository is public** (since 2026-11-03, after v0.1.0). The Action can be used from any
+  repository; listing it on the Marketplace ([github-action.md §6](github-action.md#6-the-marketplace))
+  is a manual step on a release page, still to do.
 - **Changes are committed straight to `main`** ([AGENTS.md](../AGENTS.md)).
 - **Layout v2: say what each file is** ([review nr2](reviews/2026-11-02-nr2.md)). A settings folder
   has `resources/` (Kubernetes resources, read and checked) and `raw/` (anything, never read).

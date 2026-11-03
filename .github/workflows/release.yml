@@ -8,7 +8,8 @@
 #
 # A release is cut as a draft (release-please-config.json), every asset is attached to the draft,
 # and only then is it published. A failed publish job leaves an unpublished draft, never a
-# half-populated release; and immutable releases, once enabled, refuse assets after publishing.
+# half-populated release. Immutable releases are enabled, so a published release refuses new assets
+# and its tag cannot move: everything must be attached while it is a draft.
 #
 # A draft left behind by a failed run is finished by hand: run this workflow (workflow_dispatch)
 # with its tag. It builds from the draft's own commit, attaches the assets, publishes and moves the
@@ -173,17 +174,15 @@ jobs:
       - name: Sign the checksums file (cosign keyless)
         run: cosign sign-blob --bundle settings-image.sha256sums.sigstore.json --yes dist/settings-image.sha256sums
 
-      # GitHub stores attestations only for a public repository on this plan; until settings-image
-      # is public the cosign-signed checksums are the only verification.
+      # GitHub stores attestations only for a public repository on the organisation's plan: this
+      # step fails if settings-image is ever made private again.
       - name: Attest SLSA provenance for the binaries
         id: attest
-        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/settings-image_*
 
       - name: Rename provenance bundle to the Scorecard-recognized suffix
-        if: ${{ !github.event.repository.private }}
         run: cp "${{ steps.attest.outputs.bundle-path }}" settings-image.intoto.jsonl
 
       - name: Upload the binaries as release assets
@@ -192,8 +191,7 @@ jobs:
           tag_name: ${{ needs.target.outputs.tag_name }}
           draft: true
           append_body: true
-          # The .intoto.jsonl is absent while the repository is private (no attestation).
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             dist/settings-image_linux_amd64
             dist/settings-image_linux_arm64
@@ -223,7 +221,7 @@ jobs:
               --certificate-identity-regexp '^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com
             ```
-            Once the repository is public, a binary also carries SLSA provenance:
+            Each binary also carries SLSA provenance:
             ```bash
             gh attestation verify settings-image_linux_amd64 --repo ${{ github.repository }}
             ```
