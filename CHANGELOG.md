@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ConfigButler/settings-image/compare/v0.2.0...v0.2.1) (2026-11-03)
+
+
+### Miscellaneous Chores
+
+* release 0.2.1 ([d386ab6](https://github.com/ConfigButler/settings-image/commit/d386ab62678bb8c18f2eeab8517fb81ca28d3309))
+
 ## [0.2.0](https://github.com/ConfigButler/settings-image/compare/v0.1.0...v0.2.0) (2026-11-03)
 
 
