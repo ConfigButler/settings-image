@@ -33,7 +33,8 @@ So "a real image" means an image config whose `rootfs.diff_ids` matches the laye
 mean a base image, a shell or an entrypoint: nothing in a settings image ever runs.
 
 A `FROM scratch` plus `COPY` Dockerfile would also give a mountable image (not tested). What it
-would not give is §3's stable digest, §5's refusals, or provenance.
+would not give is §3's stable digest or §5's refusals, and BuildKit's default provenance
+attestation changes the digest on every build ([digests.md §5.2](digests.md#52-the-four-usual-places)).
 
 ## 3. Facts the format depends on
 

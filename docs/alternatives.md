@@ -77,7 +77,46 @@ So the feature exists since 1.31, but it became something you could rely on in a
 at 1.35/1.36. Most of the existing guidance still shows a `FROM scratch` Dockerfile, which gives a
 new digest on every build and can leave the files unreadable to a non-root pod
 ([compare/](../compare/README.md)). settings-image is the tool made for image volumes:
-**reproducible, readable, checked, provenance-carrying settings images**, by default.
+**reproducible, readable, checked, provenance-carrying settings images**, by default. It was not
+the first to make reproducible images of files: §5.
+
+## 5. Prior art: reproducible images of files
+
+settings-image is not the first tool to make a reproducible image of a folder.
+
+**[Carvel imgpkg](https://carvel.dev/imgpkg)** (a CNCF sandbox project, since 2020) "allows users to
+store a set of arbitrary files as an OCI image", with Kubernetes configuration as a driving use
+case, and "uses deterministic file permissions and timestamps to make images reproducible". Its
+source ([`tar_image.go`](https://github.com/carvel-dev/imgpkg/blob/develop/pkg/imgpkg/image/tar_image.go))
+writes zero timestamps and uid/gid 0, like this format, but keeps **only the owner's permission
+bits**: files `mode & 0700` (so `0600`, or `0700` when executable), directories `0700`. With
+`--preserve-permissions` it keeps the host's full mode instead, which then depends on the
+builder's umask.
+
+So imgpkg makes you choose between a **reproducible digest** and **files a non-root pod can read**
+([compare/](../compare/README.md): both imgpkg rows end in `Permission denied` for uid 1000, and
+`--preserve-permissions` changes the digest with the umask). That is no bug: imgpkg was built for
+`imgpkg pull` and kapp-controller, which **extract** the files into a directory owned by whoever
+pulled them, where `0600` is a sensible, private default, and for relocating bundles with their
+images to an air-gapped registry. It was not built to be **mounted** by a container runtime. Other
+differences: Docker media types with an empty `os` and `architecture` in the config, and it takes
+everything in the folder, with no checks.
+
+Not tested: an imgpkg image as an image volume on containerd with `runAsNonRoot: true` (Docker's
+`--mount type=image` stands in), and whether containerd accepts the empty platform.
+
+**Other tools that can probably get there, not tested here:**
+
+| Tool | How | What it takes |
+|---|---|---|
+| `crane append` with a deterministic tar | `tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`, `gzip -n` | measured in [compare/](../compare/README.md): stable, but every flag must be right, and the mode still follows the checkout |
+| BuildKit, buildah/podman, kaniko | `SOURCE_DATE_EPOCH` + `rewrite-timestamp=true`; `--timestamp 0`; `--reproducible`, with a `FROM scratch` Dockerfile | a builder or daemon, several flags (BuildKit's are measured in [compare/](../compare/README.md)), no checks |
+| Nix `dockerTools`, Bazel `rules_oci` + `pkg_tar` | reproducible by design | a whole build system, for a folder of YAML |
+
+What settings-image adds is the combination, by default and without flags: a real image that both
+runtimes mount, the same digest on any machine **and** files a non-root pod can read,
+Kubernetes-aware checks, and provenance that does not change the digest
+([digests.md §5.4](digests.md#54-what-settings-image-does-and-what-it-adds)).
 
 ## Sources
 

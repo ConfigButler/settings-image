@@ -10,7 +10,8 @@ image.
 | [cli.md](cli.md) | you run `settings-image` by hand or in a CI other than GitHub Actions: every flag, credentials, the `--json` output, exit codes |
 | [github-action.md](github-action.md) | you publish from GitHub Actions: every input and output, other registries |
 | [flux.md](flux.md) | you want new settings to roll out by themselves, with Flux image automation |
-| [alternatives.md](alternatives.md) | you wonder why this exists: images versus artifacts, what Docker, ORAS and Flux produce, and the other ways settings reach a pod |
+| [alternatives.md](alternatives.md) | you wonder why this exists: images versus artifacts, what Docker, ORAS and Flux produce, prior art, and the other ways settings reach a pod |
+| [digests.md](digests.md) | you want to understand digests: what is in an image, why the same files give the same digest, what that buys, and where provenance lives |
 
 ## Working on it
 

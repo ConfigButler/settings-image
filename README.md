@@ -240,13 +240,13 @@ by [compare/](compare/README.md) (`task compare` repeats it):
 
 | | Mounts as an image volume | Same files, same digest | A non-root pod can read it | Checks the settings | Provenance |
 |---|---|---|---|---|---|
-| **settings-image** | **yes** | **yes, always** | **yes, always** | **yes** | **yes**: a referrer and a `sha-` tag |
-| `docker build`, `FROM scratch` | yes | no: a new digest every build | only if the checkout's umask allowed it | no | no |
-| `docker buildx`, tuned to be reproducible | yes | with five settings right | with a symbolic `COPY --chmod` | no | no |
-| `crane append` | yes | with six `tar` flags right | depends on the tarball | no | no |
-| `imgpkg push` | yes | yes | no: files `0600`, directories `0700` | no | no |
-| `oras push` | **no**: the pull is refused | no | n/a | no | no |
-| `flux push artifact` | **no**: mounts an **empty directory**, with no error | with `--reproducible` | n/a | no | annotations only |
+| **settings-image** | **yes** | **yes, always** | **yes, always** | **yes** | **by default**, beside the image: the digest stays stable. Not signed |
+| `docker build`, `FROM scratch` | yes | no: a new digest every build | only if the checkout's umask allowed it | no | BuildKit's attestation, by default: part of why the digest changes |
+| `docker buildx`, tuned to be reproducible | yes | with five settings right | with a symbolic `COPY --chmod` | no | turned off, to keep the digest |
+| `crane append` | yes | with six `tar` flags right | depends on the tarball | no | add your own |
+| `imgpkg push` | yes | yes | no: files `0600`, directories `0700` | no | add your own |
+| `oras push` | **no**: the pull is refused | no | n/a | no | add your own (`oras attach`) |
+| `flux push artifact` | **no**: mounts an **empty directory**, with no error | with `--reproducible` | n/a | no | source and revision annotations |
 
 What the columns mean:
 
@@ -257,6 +257,10 @@ What the columns mean:
 - **Non-root**: most pods run as non-root, and the `restricted` Pod Security Standard requires it.
   A file that is `0600` in the image is `Permission denied` in the pod.
 - **Checks**: a Secret must be SOPS-encrypted, ConfigMaps become files, a stray file is refused.
+- **Provenance**: any image can get provenance afterwards (`oras attach`, `cosign attest`). What
+  settings-image adds is a record of the commit that last changed the folder, pushed by default as
+  a referrer _beside_ the image, so the digest still means "these files". It is a claim, not a
+  signed attestation: [docs/digests.md §5](docs/digests.md#5-provenance).
 
 Why images and not artifacts, and every other way settings reach a pod:
 [docs/alternatives.md](docs/alternatives.md).

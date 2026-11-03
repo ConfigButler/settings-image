@@ -12,7 +12,7 @@
     "MD024": { "siblings_only": true },
     "MD004": { "style": "dash" },
     "MD040": {
-      "allowed_languages": ["bash", "yaml", "text", "go", "console", "json", "jsonc", "dockerfile", "csharp"]
+      "allowed_languages": ["bash", "yaml", "text", "go", "console", "json", "jsonc", "dockerfile", "csharp", "mermaid"]
     },
     "MD029": { "style": "ordered" },
     // Writes |---|---| tables without padded cells.
