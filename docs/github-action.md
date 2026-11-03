@@ -95,8 +95,8 @@ token is a secret of the place that issued it. With the new default nothing chan
 `password: ''` (the old way to choose the Docker config) still means the same.
 
 _`registry-token`, `oidc-audience`, the ghcr.io-only default and the `commit` and `skipped`
-outputs were designed on 2026-11-03 and are not built yet ([plan.md](plan.md), step 2g);
-`timestamp-tag` is step 2h. `provenance-author` is built (step 2i)._
+outputs were designed on 2026-11-03 and are not built yet ([plan.md](plan.md), step 2g).
+`timestamp-tag` (step 2h) and `provenance-author` (step 2i) are built._
 
 **Outputs:** `digest`, `reference`, `tags` (comma-separated), `changed`, `commit` (empty without
 provenance) and `skipped` (comma-separated), read from the CLI's `--json` with `jq`, which is on

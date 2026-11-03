@@ -37,7 +37,7 @@ settings-image version
 | `--plain-http` | | yes | for a local registry without TLS |
 | `--username`, `--password-stdin` | | yes | registry credentials (§4) |
 | `--registry-token-stdin` | | yes | a bearer token for the registry, sent unchanged (§4). Not built yet: [plan.md](plan.md) step 2g |
-| `--timestamp-tag <branch>` | yes | yes | add `<branch>-<unix committedAt>-<sha7>`, a tag that never moves and sorts by commit time ([format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)); what Flux follows ([flux.md](flux.md)). Not built yet: step 2h |
+| `--timestamp-tag <branch>` | yes | yes | add `<branch>-<unix committedAt>-<sha7>`, a tag that never moves and sorts by commit time ([format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)); what Flux follows ([flux.md](flux.md)). Needs Git: a usage error with `--no-provenance` or `--allow-dirty` |
 | `--provenance-author none\|name\|full` | yes | yes | how much of the commit author goes into provenance ([format-v2.md §9](format-v2.md#9-provenance-a-referrer-not-part-of-the-image)); default `none` |
 | `--json` | yes | yes | print the result as JSON on stdout (§5) |
 

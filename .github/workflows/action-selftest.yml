@@ -44,6 +44,7 @@ jobs:
         with:
           path: testdata/selftest
           repository: ${{ env.REPOSITORY }}
+          timestamp-tag: ${{ github.ref_name }}
           plain-http: 'true'
           password: ''
 
@@ -53,6 +54,7 @@ jobs:
         with:
           path: testdata/selftest
           repository: ${{ env.REPOSITORY }}
+          timestamp-tag: ${{ github.ref_name }}
           plain-http: 'true'
           password: ''
 
@@ -61,6 +63,7 @@ jobs:
           FIRST_DIGEST: ${{ steps.first.outputs.digest }}
           SECOND_DIGEST: ${{ steps.second.outputs.digest }}
           SECOND_CHANGED: ${{ steps.second.outputs.changed }}
+          TAGS: ${{ steps.first.outputs.tags }}
         run: |
           set -euo pipefail
           api="http://${REPOSITORY%%/*}/v2/${REPOSITORY#*/}"
@@ -78,6 +81,12 @@ jobs:
           grep -q ' resources/configmap.yaml$' listing.txt
           grep -q ' raw/notes.txt$' listing.txt
           if grep '^-' listing.txt | grep -v '^-rw-r--r-- '; then echo "a file is not 0644"; exit 1; fi
+
+          # The timestamp tag: <branch>-<unix commit time>-<sha7>, pointing at the image.
+          ts_tag="$(tr ',' '\n' <<< "$TAGS" | grep -E -- '-[0-9]{10}-[0-9a-f]{7}$')" \
+            || { echo "no timestamp tag in $TAGS"; exit 1; }
+          curl -fsS -H "Accept: $accept" "$api/manifests/$ts_tag" -o tagged.json
+          cmp -s manifest.json tagged.json || { echo "$ts_tag does not point at the image"; exit 1; }
 
           fallback="sha256-${FIRST_DIGEST#sha256:}"
           curl -fsS "$api/tags/list" | jq -e --arg t "$fallback" '.tags | index($t)' > /dev/null \

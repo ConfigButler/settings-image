@@ -410,3 +410,31 @@ func referrerBlob(t *testing.T, layout, referrer string) []byte {
 	}
 	return blob
 }
+
+// The timestamp tag comes from the commit that last changed the folder, like the sha- tag: a later
+// commit elsewhere does not move it. It needs that commit, so it refuses to work without Git.
+func TestBuildTimestampTag(t *testing.T) {
+	r := newRepo(t)
+	head := r.git("rev-parse", "HEAD")
+	res := cliJSON(t, "build", r.shop(), "--timestamp-tag", "Feature/X", "--branch-tag", "Feature/X", "--tag", "v1")
+	// GIT_COMMITTER_DATE is 2026-11-02T21:41:07+01:00.
+	want := []string{"sha-" + head[:7], "feature-x-1793652067-" + head[:7], "v1", "feature-x"}
+	if strings.Join(res.Tags, " ") != strings.Join(want, " ") {
+		t.Errorf("tags %q, want %q: the branch tag moves, so it goes last", res.Tags, want)
+	}
+
+	t.Setenv("GIT_COMMITTER_DATE", "2026-11-03T08:00:00Z")
+	r.write("README.md", "elsewhere\n")
+	r.commit("docs: elsewhere")
+	again := cliJSON(t, "build", r.shop(), "--timestamp-tag", "Feature/X")
+	if again.Tags[1] != want[1] {
+		t.Errorf("after a commit elsewhere: %s, want %s", again.Tags[1], want[1])
+	}
+
+	for _, escape := range []string{"--no-provenance", "--allow-dirty"} {
+		code, _, stderr := cli(t, "build", r.shop(), "--timestamp-tag", "main", escape)
+		if code != exitUsage || !strings.Contains(stderr, "--timestamp-tag") {
+			t.Errorf("with %s: exit %d, stderr %q", escape, code, stderr)
+		}
+	}
+}

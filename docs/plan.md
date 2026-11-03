@@ -184,6 +184,13 @@ from both registries has the expected files, modes, annotations and referrer.
      automation commits the newer digest into the Deployment and the pod mounts it; re-running the
      older workflow run changes nothing in the cluster or in Git.
    - When observed: README gains a "Roll out with Flux" section, pointing to [flux.md](flux.md).
+   - **Built** (2026-11-03): `TimestampTag` in the package, the CLI flag (a usage error with
+     `--no-provenance` or `--allow-dirty`), the Action input, and a check in the self-test
+     workflow that the tag points at the image. **Observed on the k3d registry**, without Flux:
+     commits one and two gave `main-1793683928-e4c9fd4` and `main-1793683930-8664cd0`; rebuilding
+     commit one (a re-run) moved `main` back to commit one's digest, while the highest timestamp
+     tag still named commit two's, and only re-pushed its own existing tag. **Not yet observed:**
+     the Flux part, in a cluster; the README section waits for it.
 9. **2i, provenance names no author by default** (designed 2026-11-03,
    [format-v2.md §9](format-v2.md#9-provenance-a-referrer-not-part-of-the-image)). A referrer is
    public wherever the image is, so it must not copy a commit author's email out of a repository,

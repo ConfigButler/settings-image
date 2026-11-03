@@ -28,6 +28,7 @@ type buildFlags struct {
 	tags          stringList
 	sensitive     stringList
 	branchTag     string
+	timestampTag  string
 	source        string
 	noProvenance  bool
 	allowDirty    bool
@@ -99,6 +100,8 @@ func parseBuildFlags(push bool, args []string, stderr io.Writer) (*buildFlags, e
 	}
 	fs.Var(&f.tags, "tag", "an extra tag (repeatable)")
 	fs.StringVar(&f.branchTag, "branch-tag", "", "add the sanitised branch tag, pushed last")
+	fs.StringVar(&f.timestampTag, "timestamp-tag", "",
+		"add <branch>-<unix commit time>-<sha7>, a tag that never moves and sorts by commit time")
 	fs.StringVar(&f.source, "source", "", "the source repository URL")
 	fs.Var(&f.sensitive, "sensitive-kind", "a kind that must be SOPS-encrypted, as group/Kind (repeatable)")
 	fs.BoolVar(&f.noProvenance, "no-provenance", false, "build no referrer, and skip Git entirely")
@@ -136,6 +139,9 @@ func (f *buildFlags) invalid() string {
 		return "push needs --repository"
 	case f.passwordStdin && f.username == "":
 		return "--password-stdin needs --username"
+	case f.timestampTag != "" && (f.noProvenance || f.allowDirty):
+		return "--timestamp-tag needs the commit that last changed the folder; " +
+			"it cannot be used with --no-provenance or --allow-dirty"
 	case f.author != authorNone && f.author != authorName && f.author != authorFull:
 		return fmt.Sprintf("--provenance-author is none, name or full, not %q", f.author)
 	}
@@ -226,11 +232,14 @@ func render(f *buildFlags, stderr io.Writer) (*settingsimage.Rendered, error) {
 	return rendered, nil
 }
 
-// tagsFor is the tags in push order: sha-, the caller's, then the moving branch tag.
+// tagsFor is the tags in push order: sha- and timestamp, the caller's, then the moving branch tag.
 func tagsFor(f *buildFlags, info *gitinfo.Info) []string {
 	tags := []string{}
 	if info != nil {
 		tags = append(tags, settingsimage.ShaTag(info.Commit))
+		if f.timestampTag != "" {
+			tags = append(tags, settingsimage.TimestampTag(f.timestampTag, info.Committed, info.Commit))
+		}
 	}
 	tags = append(tags, f.tags...)
 	if f.branchTag != "" {

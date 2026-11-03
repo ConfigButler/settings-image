@@ -32,7 +32,8 @@ type Info struct {
 	AuthorName  string
 	AuthorEmail string
 	Subject     string
-	CommittedAt string // RFC 3339, UTC
+	CommittedAt string    // RFC 3339, UTC
+	Committed   time.Time // the same, for the timestamp tag
 	Ref         string
 	Path        string // the folder relative to the repository root, slash-separated; "." for the root
 	// Shallow is true when the clone is shallow and AllowShallow let it through: Commit is then
@@ -100,7 +101,8 @@ func Read(ctx context.Context, folder string, opts Options) (*Info, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing committer date %q: %w", parts[4], err)
 	}
-	info.CommittedAt = committed.UTC().Format(time.RFC3339)
+	info.Committed = committed.UTC()
+	info.CommittedAt = info.Committed.Format(time.RFC3339)
 
 	prefix, err := git(ctx, folder, "rev-parse", "--show-prefix")
 	if err != nil {

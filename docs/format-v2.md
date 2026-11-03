@@ -323,11 +323,11 @@ then fails the whole push, although the new index was already written.
   `feature/Card` becomes `feature-card`.
 - A **timestamp tag**, only when asked for (`--timestamp-tag <branch>`):
   `<branch>-<committedAt as Unix seconds>-<first 7 of the commit>`, for the commit that last
-  changed the folder, e.g. `main-1762115267-0123456`. The branch is sanitised as for the branch
+  changed the folder, e.g. `main-1793652067-0123456` for §11's commit. The branch is sanitised as for the branch
   tag, and cut to 109 characters so the tag stays within 128. It is as reproducible as the `sha-`
   tag and never moves, and its number sorts: Flux's `ImagePolicy` follows it with `numerical`
-  ([flux.md](flux.md)). It needs Git, so it is refused with `--no-provenance` or `--allow-dirty`.
-  _(Designed 2026-11-03, not built yet: [plan.md](plan.md) step 2h.)_
+  ([flux.md](flux.md)). It needs Git, so asking for it with `--no-provenance` or `--allow-dirty`
+  is a usage error. _(Added 2026-11-03, [plan.md](plan.md) step 2h.)_
 - Any tag the caller names, which must already be a valid OCI tag
   (`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$`). The writer refuses an invalid one rather than rewrite it.
 

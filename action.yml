@@ -20,6 +20,12 @@ inputs:
   branch-tag:
     description: The branch to derive a moving tag from. Set it to '' for none.
     default: ${{ github.ref_name }}
+  timestamp-tag:
+    description: >-
+      The branch for a tag that never moves and sorts by commit time,
+      <branch>-<unix commit time>-<sha7>, e.g. ${{ github.ref_name }}. What Flux image automation
+      follows (docs/flux.md). Empty for none.
+    default: ''
   tags:
     description: Extra tags, one per line.
     default: ''
@@ -89,6 +95,7 @@ runs:
         SI_PATH: ${{ inputs.path }}
         SI_REPOSITORY: ${{ inputs.repository }}
         SI_BRANCH_TAG: ${{ inputs.branch-tag }}
+        SI_TIMESTAMP_TAG: ${{ inputs.timestamp-tag }}
         SI_TAGS: ${{ inputs.tags }}
         SI_SENSITIVE_KINDS: ${{ inputs.sensitive-kinds }}
         SI_PROVENANCE: ${{ inputs.provenance }}
@@ -100,6 +107,7 @@ runs:
         set -euo pipefail
         args=(push "$SI_PATH" --repository "$SI_REPOSITORY" --json)
         if [[ -n "$SI_BRANCH_TAG" ]]; then args+=(--branch-tag "$SI_BRANCH_TAG"); fi
+        if [[ -n "$SI_TIMESTAMP_TAG" ]]; then args+=(--timestamp-tag "$SI_TIMESTAMP_TAG"); fi
         while IFS= read -r tag; do
           tag="${tag//[[:space:]]/}"
           if [[ -n "$tag" ]]; then args+=(--tag "$tag"); fi

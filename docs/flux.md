@@ -1,8 +1,9 @@
 # Roll out settings with Flux
 
 _Design, 2026-11-03. The Flux side is standard Flux image automation and works today with any
-image; what settings-image adds is a tag that never moves backwards ([plan.md](plan.md), step 2h,
-not built yet). This page becomes a section of the README once step 2h is observed._
+image; what settings-image adds is a tag that never moves backwards ([plan.md](plan.md), step 2h:
+built, and observed on a registry; not yet observed with Flux in a cluster). This page becomes a
+section of the README once it is._
 
 **A settings change becomes a Git commit in your cluster repository, made by Flux, and a rollout.
 Nobody edits a digest by hand, and nothing rolls back without a commit saying so.**
@@ -10,8 +11,8 @@ Nobody edits a digest by hand, and nothing rolls back without a commit saying so
 ```text
 settings repo                 registry                      cluster repo              cluster
 configs/shop  ──push──▶  shop-settings                ◀──watch── Flux ──commit──▶  Deployment
-  (a commit)     Action    :main-1762115267-0123456          picks the            volumes[].image
-                           :main-1762201667-89abcde ◀─────── highest tag           .reference = …@sha256:…
+  (a commit)     Action    :main-1793652067-0123456          picks the            volumes[].image
+                           :main-1793738467-89abcde ◀─────── highest tag           .reference = …@sha256:…
 ```
 
 1. A commit changes `configs/shop`. The Action pushes the settings image with a **timestamp tag**,
@@ -80,7 +81,7 @@ writes the new reference:
 volumes:
   - name: settings
     image:
-      reference: ghcr.io/acme/shop-settings:main-1762115267-0123456@sha256:80b52437… # {"$imagepolicy": "flux-system:shop-settings"}
+      reference: ghcr.io/acme/shop-settings:main-1793652067-0123456@sha256:80b52437… # {"$imagepolicy": "flux-system:shop-settings"}
       pullPolicy: IfNotPresent
 ```
 

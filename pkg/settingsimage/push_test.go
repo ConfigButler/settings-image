@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/content/memory"
@@ -171,4 +172,27 @@ func TestTags(t *testing.T) {
 		}
 	}
 	assertEqual(t, "ShaTag", settingsimage.ShaTag("0123456789abcdef"), "sha-0123456")
+}
+
+func TestTimestampTag(t *testing.T) {
+	committed := time.Date(2026, 11, 2, 21, 41, 7, 0, time.FixedZone("CET", 3600))
+	commit := "0123456789abcdef0123456789abcdef01234567"
+	assertEqual(t, "main", settingsimage.TimestampTag("main", committed, commit), "main-1793652067-0123456")
+	assertEqual(t, "sanitised", settingsimage.TimestampTag("Feature/Card", committed, commit),
+		"feature-card-1793652067-0123456")
+	assertEqual(t, "nothing left", settingsimage.TimestampTag("..", committed, commit), "branch-1793652067-0123456")
+
+	long := settingsimage.TimestampTag(strings.Repeat("b", 300), committed, commit)
+	assertEqual(t, "long timestamp tag length", len(long), 128)
+	if err := settingsimage.ValidateTag(long); err != nil {
+		t.Error(err)
+	}
+	assertEqual(t, "long tag keeps its number", strings.TrimPrefix(long, strings.Repeat("b", 109)),
+		"-1793652067-0123456")
+
+	// The number sorts: a later commit gives a higher one, whatever the branch name holds.
+	later := settingsimage.TimestampTag("main", committed.Add(time.Second), "fedcba9")
+	if later <= settingsimage.TimestampTag("main", committed, commit) {
+		t.Errorf("%s does not sort after the earlier tag", later)
+	}
 }
