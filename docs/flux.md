@@ -33,6 +33,13 @@ The timestamp tag comes from the commit that last changed the folder, so it is r
 never moves. A re-run only re-pushes a tag that already exists. The highest still wins, so the
 cluster only ever moves forward, and every step is a commit in Flux's history.
 
+Two limits, both from ordering by the committer date in seconds:
+
+- **Two commits to the folder in the same second** give two tags with the same number, and Flux
+  may pick either. The next commit settles it. A bot that commits in bursts can hit this.
+- **A committer date that goes backwards** (a skewed clock, or a rebase with
+  `--committer-date-is-author-date`) gives a lower number, which Flux ignores until a later commit.
+
 ## What you write
 
 In the settings repository's workflow:

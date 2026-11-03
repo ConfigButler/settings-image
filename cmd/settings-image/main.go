@@ -20,6 +20,7 @@ const (
 	exitError   = 1 // a retry might fix it: network, registry, Git
 	exitUsage   = 2
 	exitRefused = 3 // the input breaks a rule; a retry cannot help
+	exitDenied  = 4 // the registry refused the credential (401 or 403); a retry cannot help
 )
 
 const usage = `settings-image: build settings into a mountable OCI image
@@ -31,7 +32,11 @@ Usage:
                             build the image and push it
   settings-image version    print the build this binary came from
 
-Run "settings-image build -h" for the flags. Docs: docs/cli.md.
+The folder holds resources/ (Kubernetes objects) and raw/ (any file). It must be committed in
+a Git work tree, for provenance and the sha- tag; outside Git, add --no-provenance.
+
+Run "settings-image build -h" for the flags.
+Docs: https://github.com/ConfigButler/settings-image#readme
 `
 
 func main() {

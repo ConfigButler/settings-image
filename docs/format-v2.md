@@ -55,10 +55,12 @@ relative to the folder.
   - a name ending in `.md` or `.markdown`;
   - `LICENSE`, `LICENCE`, `COPYING`, `NOTICE`, each also with `.txt`.
 
-  It is gitops-reverser's own list of files it tolerates without managing them, plus its
-  `.gittargetignore`, so a folder the reverser writes into as `resources/` can keep its marker
-  and README beside it. A skipped file is named in the writer's output (a warning, and `skipped`
-  in the CLI's JSON).
+  These are the files a Git repository commonly keeps beside its content: a README, a licence,
+  Git and SOPS settings, and the `.gittargetignore` marker that
+  [gitops-reverser](https://github.com/ConfigButler/gitops-reverser) leaves in a folder it writes
+  to. A skipped file is named in the writer's output (a warning, and `skipped` in the CLI's JSON).
+  A listed name that is a symlink (`README.md -> ../docs/shop.md`) is still refused, as every
+  symlink is (§8).
 - **Refused:** any other file or directory at the top of the folder, and everything else in §8. A
   resource written one level too high (`menu.yaml` beside `resources/`) or a typo such as
   `resource/` must stop the build, not publish an image without them. A file under `resources/`

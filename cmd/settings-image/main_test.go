@@ -19,6 +19,7 @@ func TestRun(t *testing.T) {
 		{name: "version", args: []string{"version"}, wantCode: 0, wantStdout: "settings-image version="},
 		{name: "version flag", args: []string{"--version"}, wantCode: 0, wantStdout: "settings-image version="},
 		{name: "help", args: []string{"help"}, wantCode: 0, wantStdout: "Usage:"},
+		{name: "build -h", args: []string{"build", "-h"}, wantCode: 0, wantStderr: "-no-provenance"},
 		{name: "no command", args: nil, wantCode: 2, wantStderr: "Usage:"},
 		{
 			name:       "unknown command",

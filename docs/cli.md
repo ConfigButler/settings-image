@@ -36,8 +36,8 @@ settings-image version
 | `--allow-shallow` | yes | yes | accept a shallow clone (§3); provenance then names HEAD and says so in a warning |
 | `--plain-http` | | yes | for a local registry without TLS |
 | `--username`, `--password-stdin` | | yes | registry credentials (§4) |
-| `--registry-token-stdin` | | yes | a bearer token for the registry, sent unchanged (§4). Not built yet: [plan.md](plan.md) step 2g |
-| `--timestamp-tag <branch>` | yes | yes | add `<branch>-<unix committedAt>-<sha7>`, a tag that never moves and sorts by commit time ([format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)); what Flux follows ([flux.md](flux.md)). Needs Git: a usage error with `--no-provenance` or `--allow-dirty` |
+| `--registry-token-stdin` | | yes | a bearer token for the registry, sent unchanged (§4) |
+| `--timestamp-tag <branch>` | yes | yes | add `<branch>-<unix committedAt>-<sha7>`, a tag that never moves and sorts by commit time ([format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)); what Flux follows ([flux.md](flux.md)). Needs the commit that last changed the folder: a usage error with `--no-provenance`, `--allow-dirty` or `--allow-shallow` |
 | `--provenance-author none\|name\|full` | yes | yes | how much of the commit author goes into provenance ([format-v2.md §9](format-v2.md#9-provenance-a-referrer-not-part-of-the-image)); default `none` |
 | `--json` | yes | yes | print the result as JSON on stdout (§5) |
 
@@ -46,9 +46,10 @@ settings-image version
 The folder must be inside a Git work tree unless `--no-provenance` is set. The CLI shells out to
 `git`; it does not link a Git library.
 
-1. **Refuse a dirty folder:** `git status --porcelain -- <folder>/resources <folder>/raw` must be
-   empty, unless `--allow-dirty`. Otherwise the image would hold bytes no commit holds, while the
-   provenance names a commit.
+1. **Refuse a dirty folder:** `git status --porcelain --ignored -- <folder>/resources <folder>/raw`
+   must be empty, unless `--allow-dirty`. Otherwise the image would hold bytes no commit holds,
+   while the provenance names a commit. Ignored files count: the CLI reads the folder from disk, so
+   a file `.gitignore` hides would still reach the image.
 2. **The commit that last changed the folder:**
    `git log -1 --format=%H%x00%an%x00%ae%x00%s%x00%cI -- <folder>/resources <folder>/raw`. Using
    this commit rather than HEAD means a rebuild on a later commit that did not touch the folder is a
@@ -111,9 +112,6 @@ nothing to any other.
 A registry that refuses the credential (HTTP 401 or 403) exits 4 (§6), naming the registry and
 never the credential.
 
-_The registry token (`--registry-token-stdin`, `SETTINGS_IMAGE_REGISTRY_TOKEN`, `RegistryToken`) is
-designed (2026-11-03), not built yet: [plan.md](plan.md) step 2g._
-
 A credential is never printed, logged or put in an error. A 401 or 403 from the registry is its own
 error, naming the registry and saying the credential was refused.
 
@@ -153,7 +151,7 @@ Without `--json`, stdout carries only the `reference`, so `ref=$(settings-image 
 | 1 | an error that a retry might fix: network, registry, Git |
 | 2 | usage: unknown command or flag, missing argument |
 | 3 | **refused**: the folder breaks a rule of [format-v2.md §8](format-v2.md#8-refusals), or a tag is invalid, or the folder is dirty, outside Git (without `--no-provenance`), or the clone shallow. Retrying cannot help; the message names the path |
-| 4 | **the registry refused the credential** (HTTP 401 or 403): a wrong or expired token, a missing trust rule, no push permission. Retrying cannot help; the message names the registry. _(Designed 2026-11-03, not built yet: [plan.md](plan.md) step 2g; until then this is exit 1)_ |
+| 4 | **the registry refused the credential** (HTTP 401 or 403): a wrong or expired token, a missing trust rule, no push permission. Retrying cannot help; the message names the registry. |
 
 ## 7. Not in the CLI
 

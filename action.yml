@@ -47,9 +47,20 @@ inputs:
     default: ${{ github.actor }}
   password:
     description: >-
-      Registry password. Set it to '' to use the Docker config instead, as docker/login-action
-      leaves it, for a registry other than ghcr.io.
-    default: ${{ github.token }}
+      Registry password. When no password, registry-token or oidc-audience is set, a push to
+      ghcr.io uses the workflow's github.token, and any other registry uses the Docker config, as
+      docker/login-action leaves it.
+    default: ''
+  registry-token:
+    description: >-
+      A registry token, sent unchanged as "Authorization: Bearer" to the registry and to no other
+      host. At most one of password, registry-token and oidc-audience.
+    default: ''
+  oidc-audience:
+    description: >-
+      Request the workflow's GitHub OIDC token for this audience (use the registry host) and send
+      it as the registry token. Needs `permissions: id-token: write`.
+    default: ''
   plain-http:
     description: "'true' talks HTTP to the registry (a service-container registry)."
     default: 'false'
@@ -67,6 +78,12 @@ outputs:
   changed:
     description: "'false' when the image and every tag were already there."
     value: ${{ steps.push.outputs.changed }}
+  commit:
+    description: The commit that last changed the folder, as in the provenance; empty without it.
+    value: ${{ steps.push.outputs.commit }}
+  skipped:
+    description: Known top-level files left out of the image (README.md, ...), comma-separated.
+    value: ${{ steps.push.outputs.skipped }}
 
 runs:
   using: composite
@@ -102,6 +119,9 @@ runs:
         SI_PROVENANCE_AUTHOR: ${{ inputs.provenance-author }}
         SI_USERNAME: ${{ inputs.username }}
         SI_PASSWORD: ${{ inputs.password }}
+        SI_REGISTRY_TOKEN: ${{ inputs.registry-token }}
+        SI_OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
+        SI_GITHUB_TOKEN: ${{ github.token }}
         SI_PLAIN_HTTP: ${{ inputs.plain-http }}
       run: |
         set -euo pipefail
@@ -118,14 +138,35 @@ runs:
         done <<< "$SI_SENSITIVE_KINDS"
         if [[ "$SI_PROVENANCE" == "false" ]]; then
           args+=(--no-provenance)
-        else
+        elif [[ -n "$SI_PROVENANCE_AUTHOR" ]]; then
           args+=(--provenance-author "$SI_PROVENANCE_AUTHOR")
         fi
         if [[ "$SI_PLAIN_HTTP" == "true" ]]; then args+=(--plain-http); fi
-        # The pair is passed only when a password is set, so password: '' leaves the Docker
-        # config in charge (docs/reviews/2026-11-02-first-read.md, question 2).
+        # One credential (docs/cli.md §4). github.token is a secret of GitHub: it goes to ghcr.io
+        # only, and only when no other credential is set; otherwise the Docker config applies.
+        n=0
+        for v in "$SI_PASSWORD" "$SI_REGISTRY_TOKEN" "$SI_OIDC_AUDIENCE"; do [[ -z "$v" ]] || n=$((n + 1)); done
+        if (( n > 1 )); then
+          echo "::error::Set at most one of password, registry-token and oidc-audience."
+          exit 2
+        fi
         if [[ -n "$SI_PASSWORD" ]]; then
           export SETTINGS_IMAGE_USERNAME="$SI_USERNAME" SETTINGS_IMAGE_PASSWORD="$SI_PASSWORD"
+        elif [[ -n "$SI_REGISTRY_TOKEN" ]]; then
+          export SETTINGS_IMAGE_REGISTRY_TOKEN="$SI_REGISTRY_TOKEN"
+        elif [[ -n "$SI_OIDC_AUDIENCE" ]]; then
+          # Requested here, right before the push: the token lives minutes.
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+            echo "::error::oidc-audience needs 'permissions: id-token: write' on the job."
+            exit 2
+          fi
+          audience="$(jq -rn --arg a "$SI_OIDC_AUDIENCE" '$a | @uri')"
+          token="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$audience" | jq -r .value)"
+          echo "::add-mask::$token"
+          export SETTINGS_IMAGE_REGISTRY_TOKEN="$token"
+        elif [[ "$SI_REPOSITORY" == ghcr.io/* ]]; then
+          export SETTINGS_IMAGE_USERNAME="$SI_USERNAME" SETTINGS_IMAGE_PASSWORD="$SI_GITHUB_TOKEN"
         fi
 
         out="$("$RUNNER_TEMP/settings-image" "${args[@]}")"
@@ -135,6 +176,8 @@ runs:
           echo "reference=$(jq -r .reference <<< "$out")"
           echo "tags=$(jq -r '.tags | join(",")' <<< "$out")"
           echo "changed=$(jq -r .changed <<< "$out")"
+          echo "commit=$(jq -r '.commit // ""' <<< "$out")"
+          echo "skipped=$(jq -r '.skipped | join(",")' <<< "$out")"
         } >> "$GITHUB_OUTPUT"
         if [[ "$(jq -r .changed <<< "$out")" == "false" ]]; then
           echo "::notice::Nothing to do: $(jq -r .reference <<< "$out") and its tags were already there."

@@ -39,7 +39,7 @@ type repo struct {
 func newRepo(t *testing.T) *repo {
 	t.Helper()
 	for _, v := range []string{"GITHUB_REF", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY",
-		"SETTINGS_IMAGE_USERNAME", "SETTINGS_IMAGE_PASSWORD"} {
+		"SETTINGS_IMAGE_USERNAME", "SETTINGS_IMAGE_PASSWORD", "SETTINGS_IMAGE_REGISTRY_TOKEN"} {
 		t.Setenv(v, "")
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
@@ -186,6 +186,17 @@ func TestBuildRefusals(t *testing.T) {
 			wantIn: "uncommitted",
 		},
 		{
+			// The writer reads the disk, so a file Git ignores would reach the image unrecorded.
+			name: "dirty: ignored",
+			setup: func(r *repo) []string {
+				r.write("configs/shop/.gitignore", "local.yaml\n")
+				r.commit("ignore local.yaml")
+				r.write("configs/shop/resources/local.yaml", knownConfigMap)
+				return []string{"build", r.shop()}
+			},
+			wantIn: "uncommitted",
+		},
+		{
 			name: "secret",
 			setup: func(r *repo) []string {
 				r.write("configs/shop/resources/s.yaml", "apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n")
@@ -291,6 +302,8 @@ func TestBuildUsage(t *testing.T) {
 		"stdin without user":  {"push", r.shop(), "--repository", "x/y", "--password-stdin"},
 		"invalid repository":  {"push", r.shop(), "--repository", "UPPER/Case"},
 		"plain-http on build": {"build", r.shop(), "--plain-http"},
+		"token and username":  {"push", r.shop(), "--repository", "x/y", "--registry-token-stdin", "--username", "a"},
+		"token on build":      {"build", r.shop(), "--registry-token-stdin"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if code, _, stderr := cli(t, args...); code != exitUsage {
@@ -431,7 +444,7 @@ func TestBuildTimestampTag(t *testing.T) {
 		t.Errorf("after a commit elsewhere: %s, want %s", again.Tags[1], want[1])
 	}
 
-	for _, escape := range []string{"--no-provenance", "--allow-dirty"} {
+	for _, escape := range []string{"--no-provenance", "--allow-dirty", "--allow-shallow"} {
 		code, _, stderr := cli(t, "build", r.shop(), "--timestamp-tag", "main", escape)
 		if code != exitUsage || !strings.Contains(stderr, "--timestamp-tag") {
 			t.Errorf("with %s: exit %d, stderr %q", escape, code, stderr)

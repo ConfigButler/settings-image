@@ -63,9 +63,12 @@ jobs:
           FIRST_DIGEST: ${{ steps.first.outputs.digest }}
           SECOND_DIGEST: ${{ steps.second.outputs.digest }}
           SECOND_CHANGED: ${{ steps.second.outputs.changed }}
+          FIRST_COMMIT: ${{ steps.first.outputs.commit }}
           TAGS: ${{ steps.first.outputs.tags }}
         run: |
           set -euo pipefail
+          test "$FIRST_COMMIT" = "$(git log -1 --format=%H -- testdata/selftest/resources testdata/selftest/raw)" \
+            || { echo "commit output $FIRST_COMMIT"; exit 1; }
           api="http://${REPOSITORY%%/*}/v2/${REPOSITORY#*/}"
           test "$FIRST_DIGEST" = "$SECOND_DIGEST" || { echo "digests differ"; exit 1; }
           test "$SECOND_CHANGED" = "false" || { echo "second run changed=$SECOND_CHANGED"; exit 1; }

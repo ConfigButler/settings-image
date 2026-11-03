@@ -37,6 +37,7 @@ type buildFlags struct {
 	plainHTTP     bool
 	username      string
 	passwordStdin bool
+	tokenStdin    bool
 	json          bool
 }
 
@@ -113,10 +114,15 @@ func parseBuildFlags(push bool, args []string, stderr io.Writer) (*buildFlags, e
 		fs.BoolVar(&f.plainHTTP, "plain-http", false, "talk HTTP to the registry")
 		fs.StringVar(&f.username, "username", "", "registry username")
 		fs.BoolVar(&f.passwordStdin, "password-stdin", false, "read the registry password from stdin")
+		fs.BoolVar(&f.tokenStdin, "registry-token-stdin", false,
+			"read a registry token from stdin, sent as Authorization: Bearer to the registry only")
 	}
 	fs.BoolVar(&f.json, "json", false, "print the result as JSON")
 
 	positional, err := parseInterspersed(fs, args)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil, err
+	}
 	if err != nil {
 		return nil, &usageError{msg: err.Error()}
 	}
@@ -137,16 +143,28 @@ func (f *buildFlags) invalid() string {
 	switch {
 	case f.push && f.repository == "":
 		return "push needs --repository"
-	case f.passwordStdin && f.username == "":
-		return "--password-stdin needs --username"
-	case f.timestampTag != "" && (f.noProvenance || f.allowDirty):
+	case f.timestampTag != "" && (f.noProvenance || f.allowDirty || f.allowShallow):
 		return "--timestamp-tag needs the commit that last changed the folder; " +
-			"it cannot be used with --no-provenance or --allow-dirty"
+			"it cannot be used with --no-provenance, --allow-dirty or --allow-shallow"
 	case f.author != authorNone && f.author != authorName && f.author != authorFull:
 		return fmt.Sprintf("--provenance-author is none, name or full, not %q", f.author)
 	}
+	if msg := f.invalidCredential(); msg != "" {
+		return msg
+	}
 	if st, err := os.Stat(f.folder); err != nil || !st.IsDir() {
 		return fmt.Sprintf("%s is not a directory", f.folder)
+	}
+	return ""
+}
+
+// invalidCredential says what is wrong with the credential flags, or "": a run uses one.
+func (f *buildFlags) invalidCredential() string {
+	switch {
+	case f.passwordStdin && f.username == "":
+		return "--password-stdin needs --username"
+	case f.tokenStdin && (f.passwordStdin || f.username != ""):
+		return "--registry-token-stdin cannot be used with --username or --password-stdin; a run uses one credential"
 	}
 	return ""
 }
@@ -324,16 +342,9 @@ func openTarget(f *buildFlags, stdin io.Reader) (oras.Target, error) {
 		}
 		return store, nil
 	}
-	opts := settingsimage.RepositoryOptions{PlainHTTP: f.plainHTTP}
-	switch {
-	case f.passwordStdin:
-		b, err := io.ReadAll(stdin)
-		if err != nil {
-			return nil, fmt.Errorf("reading the password from stdin: %w", err)
-		}
-		opts.Username, opts.Password = f.username, strings.TrimRight(string(b), "\r\n")
-	case os.Getenv("SETTINGS_IMAGE_PASSWORD") != "":
-		opts.Username, opts.Password = os.Getenv("SETTINGS_IMAGE_USERNAME"), os.Getenv("SETTINGS_IMAGE_PASSWORD")
+	opts, err := credentials(f, stdin)
+	if err != nil {
+		return nil, err
 	}
 	repo, err := settingsimage.NewRepository(f.repository, opts)
 	if err != nil {
@@ -341,6 +352,42 @@ func openTarget(f *buildFlags, stdin io.Reader) (oras.Target, error) {
 	}
 	return repo, nil
 }
+
+// credentials picks the one credential of a push (docs/cli.md §4): the flags, else the
+// environment, else none here, which leaves the Docker config and then anonymous access.
+func credentials(f *buildFlags, stdin io.Reader) (settingsimage.RepositoryOptions, error) {
+	opts := settingsimage.RepositoryOptions{PlainHTTP: f.plainHTTP}
+	switch {
+	case f.passwordStdin, f.tokenStdin:
+		b, err := io.ReadAll(stdin)
+		if err != nil {
+			return opts, fmt.Errorf("reading the credential from stdin: %w", err)
+		}
+		secret := strings.TrimRight(string(b), "\r\n")
+		if secret == "" {
+			return opts, &usageError{msg: "stdin held no credential"}
+		}
+		if f.tokenStdin {
+			opts.RegistryToken = secret
+		} else {
+			opts.Username, opts.Password = f.username, secret
+		}
+	case os.Getenv(envToken) != "" && os.Getenv(envPassword) != "":
+		return opts, &usageError{msg: envPassword + " and " + envToken + " are both set; a run uses one credential"}
+	case os.Getenv(envToken) != "":
+		opts.RegistryToken = os.Getenv(envToken)
+	case os.Getenv(envPassword) != "":
+		opts.Username, opts.Password = os.Getenv(envUsername), os.Getenv(envPassword)
+	}
+	return opts, nil
+}
+
+// The credential variables (docs/cli.md §4); the Action sets them.
+const (
+	envUsername = "SETTINGS_IMAGE_USERNAME"
+	envPassword = "SETTINGS_IMAGE_PASSWORD"
+	envToken    = "SETTINGS_IMAGE_REGISTRY_TOKEN"
+)
 
 // report prints err and returns its exit code (docs/cli.md §6).
 func report(stderr io.Writer, err error) int {
@@ -352,10 +399,13 @@ func report(stderr io.Writer, err error) int {
 		usage   *usageError
 		refused *refusedError
 		refusal *settingsimage.RefusalError
+		denied  *settingsimage.AuthError
 	)
 	switch {
-	case errors.As(err, &usage):
+	case errors.As(err, &usage), errors.Is(err, settingsimage.ErrTwoCredentials):
 		return exitUsage
+	case errors.As(err, &denied):
+		return exitDenied
 	case errors.As(err, &refused), errors.As(err, &refusal),
 		errors.Is(err, settingsimage.ErrInvalidTag), errors.Is(err, gitinfo.ErrRefused):
 		return exitRefused

@@ -162,11 +162,19 @@ from both registries has the expected files, modes, annotations and referrer.
    - **A refused credential exits 4**, not 1: a 401 or 403 never fixes itself on a retry, so a
      person and the Action can tell misconfiguration from a network blip.
    - The Action gains the outputs `commit` and `skipped`.
-   - **Observe:** a push to a local zot that has both a password file and bearer (OIDC) login on,
-     with a bearer token, read back with `crane`; the token is not sent after a redirect to another
-     host (a test registry that redirects blobs and logs headers); a wrong token exits 4; a
-     workflow without `id-token: write` fails with its message; a push to a non-ghcr.io registry
-     sends no `GITHUB_TOKEN`.
+   - **Built and observed** (2026-11-03). Unit tests: the token reaches every request to the
+     registry and not the storage host a blob redirects to; 401 and 403 are an `AuthError`, exit 4,
+     without the token in the message; two credentials are a usage error. Against zot 2.1.8 with
+     bearer auth (a JWT signed with a test key): `push --registry-token-stdin` pushed, `crane`
+     (token in its Docker config) read back the same digest and files; a token signed by another
+     key exited 4. The Action's push script, run locally against zot with a fake OIDC endpoint:
+     it asked for the audience, masked the token and pushed; without `ACTIONS_ID_TOKEN_REQUEST_URL`
+     it failed with the `id-token: write` message; two credentials failed; with no credential on a
+     non-ghcr.io registry zot never saw `github.token`. Not observed: zot with a password file and
+     bearer at once, and a real GitHub OIDC token (needs a workflow against a reachable zot).
+   - Also from the review of 2f–2i: the dirty check counts ignored files under `resources/` and
+     `raw/` (the writer reads the disk); `--timestamp-tag` with `--allow-shallow` is a usage error
+     (HEAD is not the folder's commit); `provenance-author: ''` in the Action means the default.
 8. **2h, a sortable tag, and Flux image automation** (designed 2026-11-03,
    [format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order), [flux.md](flux.md)).
    `--timestamp-tag <branch>` (Action input `timestamp-tag`) adds

@@ -54,10 +54,11 @@ func CheckWorkTree(ctx context.Context, folder string) error {
 // Git ignores it too: editing it neither makes the folder dirty nor moves its commit.
 func pathspecs() []string { return []string{"resources", "raw"} }
 
-// Dirty reports whether resources/ or raw/ in the folder has uncommitted changes, untracked
-// files included.
+// Dirty reports whether resources/ or raw/ in the folder has uncommitted changes, untracked and
+// ignored files included: the writer reads the folder from disk, so a file Git ignores would go
+// into an image whose provenance names a commit that never held it.
 func Dirty(ctx context.Context, folder string) (bool, error) {
-	out, err := git(ctx, folder, append([]string{"status", "--porcelain", "--"}, pathspecs()...)...)
+	out, err := git(ctx, folder, append([]string{"status", "--porcelain", "--ignored", "--"}, pathspecs()...)...)
 	if err != nil {
 		return false, err
 	}
