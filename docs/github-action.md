@@ -38,6 +38,32 @@ jobs:
 On ghcr.io, nothing else is needed: the workflow's own `GITHUB_TOKEN` can push to a package in its
 organisation.
 
+**Another registry.** For a registry that accepts the workflow's GitHub OIDC token as a bearer
+token (zot, with a rule on the token's `repository_id` and `ref` claims), the job asks for an ID
+token and names the audience the registry expects:
+
+```yaml
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # the OIDC token
+    steps:
+      - uses: actions/checkout@<sha> # pinned
+        with:
+          fetch-depth: 0
+      - uses: ConfigButler/settings-image@v0
+        with:
+          path: coffee # coffee/resources and coffee/raw
+          repository: zot.example.com/k8s-trail/coffee
+          oidc-audience: zot.example.com
+```
+
+A registry with its own login action (ECR, ACR, Artifact Registry) runs that action first; the
+Action then uses the Docker config it leaves. A registry with a username and a token takes
+`username` and `password`. Only one credential is used per run ([cli.md §4](cli.md#4-registry-credentials)).
+
 ## 2. `action.yml`, at the repository root
 
 The root is where the Marketplace requires it, and it lets a workflow say
@@ -53,9 +79,21 @@ The root is where the Marketplace requires it, and it lets a workflow say
 | `tags` | `''` | one `--tag` per line |
 | `sensitive-kinds` | `''` | one `--sensitive-kind` per line |
 | `provenance` | `'true'` | `--no-provenance` when `'false'` |
-| `username` | `${{ github.actor }}` | `SETTINGS_IMAGE_USERNAME` |
-| `password` | `${{ github.token }}` | `SETTINGS_IMAGE_PASSWORD`. When it is `''`, neither variable is set and the Docker config applies, as `docker/login-action` left it: set `password: ''` for a registry other than ghcr.io |
+| `username` | `${{ github.actor }}` | `SETTINGS_IMAGE_USERNAME`, only together with a password |
+| `password` | `''` | `SETTINGS_IMAGE_PASSWORD`. When no credential input is set and `repository` is on `ghcr.io`, the Action uses `${{ github.token }}`. Otherwise, with no credential set, the Docker config applies, as `docker/login-action` left it |
+| `registry-token` | `''` | `SETTINGS_IMAGE_REGISTRY_TOKEN`: a bearer token sent unchanged |
+| `oidc-audience` | `''` | the Action requests the workflow's GitHub OIDC token for this audience, masks it, and passes it as the registry token. Needs `permissions: id-token: write`; without it the step fails and says so |
 | `plain-http` | `'false'` | `--plain-http` when `'true'` (a service-container registry) |
+
+At most one of `password`, `registry-token` and `oidc-audience` may be set; two is an error.
+
+**`github.token` goes to ghcr.io only.** The `password` default used to be `${{ github.token }}` for
+every registry, so a workflow pushing elsewhere handed the repository's token to that registry. A
+token is a secret of the place that issued it. With the new default nothing changes on ghcr.io, and
+`password: ''` (the old way to choose the Docker config) still means the same.
+
+_`registry-token`, `oidc-audience` and the ghcr.io-only default were designed on 2026-11-03 and are
+not built yet ([plan.md](plan.md), step 2g)._
 
 **Outputs:** `digest`, `reference`, `tags` (comma-separated) and `changed`, read from the CLI's
 `--json` with `jq`, which is on every hosted runner.

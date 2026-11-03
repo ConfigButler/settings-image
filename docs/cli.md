@@ -36,6 +36,7 @@ settings-image version
 | `--allow-shallow` | yes | yes | accept a shallow clone (§3); provenance then names HEAD and says so in a warning |
 | `--plain-http` | | yes | for a local registry without TLS |
 | `--username`, `--password-stdin` | | yes | registry credentials (§4) |
+| `--registry-token-stdin` | | yes | a bearer token for the registry, sent unchanged (§4). Not built yet: [plan.md](plan.md) step 2g |
 | `--json` | yes | yes | print the result as JSON on stdout (§5) |
 
 ## 3. Git: where provenance and the `sha-` tag come from
@@ -43,13 +44,19 @@ settings-image version
 The folder must be inside a Git work tree unless `--no-provenance` is set. The CLI shells out to
 `git`; it does not link a Git library.
 
-1. **Refuse a dirty folder:** `git status --porcelain -- <folder>` must be empty, unless
-   `--allow-dirty`. Otherwise the image would hold bytes no commit holds, while the provenance names
-   a commit.
+1. **Refuse a dirty folder:** `git status --porcelain -- <folder>/resources <folder>/raw` must be
+   empty, unless `--allow-dirty`. Otherwise the image would hold bytes no commit holds, while the
+   provenance names a commit.
 2. **The commit that last changed the folder:**
-   `git log -1 --format=%H%x00%an%x00%ae%x00%s%x00%cI -- <folder>`. Using this commit rather than
-   HEAD means a rebuild on a later commit that did not touch the folder is a complete no-op: the
-   same digest, the same referrer and the same `sha-` tag.
+   `git log -1 --format=%H%x00%an%x00%ae%x00%s%x00%cI -- <folder>/resources <folder>/raw`. Using
+   this commit rather than HEAD means a rebuild on a later commit that did not touch the folder is a
+   complete no-op: the same digest, the same referrer and the same `sha-` tag.
+
+   Both commands look only at `resources/` and `raw/`, the parts that reach the image
+   ([format-v2.md §2](format-v2.md#2-input-the-folder)). A top-level file such as
+   `.gittargetignore` or `README.md` is skipped, so editing it changes neither the digest nor the
+   commit, and an uncommitted edit to it does not make the folder dirty. _(Designed 2026-11-03, not
+   built yet: [plan.md](plan.md) step 2f. Until then both commands take the whole folder.)_
 3. **Refuse a shallow clone** (`git rev-parse --is-shallow-repository` is `true`) unless
    `--allow-shallow`. In a depth-1 clone, `git log -- <folder>` returns HEAD for every folder,
    because the boundary commit appears to add everything. The answer would be wrong without any
@@ -65,14 +72,36 @@ The folder must be inside a Git work tree unless `--no-provenance` is set. The C
 
 ## 4. Registry credentials
 
-In this order:
+The CLI knows the generic forms of registry credential and nothing about any one registry. A
+cloud's own token exchange (ECR, ACR, Artifact Registry) belongs to that cloud's login action,
+which leaves its result in the Docker config.
 
-1. `--username` with `--password-stdin`;
-2. `SETTINGS_IMAGE_USERNAME` and `SETTINGS_IMAGE_PASSWORD` from the environment (what the Action
-   sets);
+| Credential | Sent as | For example |
+|---|---|---|
+| a username and a password | HTTP Basic, or exchanged at the registry's token service | ghcr.io, Docker Hub, Harbor, Quay; a token that a registry takes as a password |
+| a **registry token** | `Authorization: Bearer <token>`, unchanged | zot accepting a GitHub Actions OIDC token; any registry that takes a bearer token as is |
+| the Docker config and its credential helpers | whatever `docker login` stored | ECR, ACR and Artifact Registry through their login actions; `docker/login-action` |
+| none | anonymous | a local registry |
+
+In this order, the first that is given:
+
+1. `--username` with `--password-stdin`, or `--registry-token-stdin`;
+2. `SETTINGS_IMAGE_USERNAME` and `SETTINGS_IMAGE_PASSWORD`, or `SETTINGS_IMAGE_REGISTRY_TOKEN`,
+   from the environment (what the Action sets);
 3. the Docker config and its credential helpers, as `docker login` left them (oras-go's
-   `credentials.NewStoreFromDocker`), so `docker/login-action` works;
+   `credentials.NewStoreFromDocker`), so `docker/login-action` works. Its `registrytoken` field is
+   a registry token, so writing a token there works today, without the flag;
 4. anonymous.
+
+A run uses one credential. A registry token together with `--username` or `--password-stdin` (or
+their variables) is a usage error (exit 2), never a guess. In the Go API the token is
+`RepositoryOptions.RegistryToken`.
+
+A registry token is sent only when the registry answers with a `Bearer` challenge. When it asks for
+`Basic`, the push fails with an error saying that this registry wants a username and a password.
+
+_The registry token (`--registry-token-stdin`, `SETTINGS_IMAGE_REGISTRY_TOKEN`, `RegistryToken`) is
+designed (2026-11-03), not built yet: [plan.md](plan.md) step 2g._
 
 A credential is never printed, logged or put in an error. A 401 or 403 from the registry is its own
 error, naming the registry and saying the credential was refused.
@@ -89,11 +118,15 @@ Progress and warnings go to **stderr**. With `--json`, **stdout** carries exactl
   "tags": ["sha-0123456", "main"],
   "provenance": "sha256:8962065a…",
   "commit": "0123456789abcdef0123456789abcdef01234567",
+  "skipped": [".gittargetignore"],
   "changed": true
 }
 ```
 
 - `provenance` and `commit` are `null` when there are none.
+- `skipped` lists the files at the top of the folder that were left out
+  ([format-v2.md §2](format-v2.md#2-input-the-folder)), each also named in a warning on stderr. It
+  is `[]` when there are none. _(Not built yet: [plan.md](plan.md) step 2f.)_
 - `changed` is `false` when, before the push, the image already existed in the repository **and**
   every tag already pointed at it. That is the "nothing to do" case, and the Action reports it.
 - `build` gives the same object without `changed`, and with `repository` set to `--repository` if

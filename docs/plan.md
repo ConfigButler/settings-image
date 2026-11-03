@@ -125,9 +125,31 @@ from both registries has the expected files, modes, annotations and referrer.
    A Go test rebuilds every case and fails on any byte of drift. Readers in other languages test
    against this directory at a release tag.
    - **Observe:** the test passes, and fails when one input byte is changed.
+6. **2f, top-level files are skipped, not refused** (designed 2026-11-03,
+   [format-v2.md §2](format-v2.md#2-input-the-folder)). Only `resources/` and `raw/` reach the
+   image; a file beside them is skipped and named (a warning, `skipped` in the JSON); any other
+   top-level directory is still refused, so a typo like `resource/` cannot publish an empty image.
+   The dirty check and the last-changed commit look only at `resources/` and `raw/`
+   ([cli.md §3](cli.md#3-git-where-provenance-and-the--tag-come-from)). This is what lets
+   gitops-reverser write `coffee/resources` and keep its `.gittargetignore` in `coffee/`.
+   - A refusal test becomes a skip test; a new conformance case holds a reverser-shaped folder.
+   - **Observe:** the case's digest equals the digest of the same folder without the top-level
+     file; an edit to that file alone gives `changed: false`; `task test-mount` mounts it.
+7. **2g, any registry** (designed 2026-11-03, [cli.md §4](cli.md#4-registry-credentials),
+   [github-action.md §2](github-action.md#2-actionyml-at-the-repository-root)). Generic credential
+   forms, nothing per registry: `--registry-token-stdin` (a bearer token sent unchanged), the
+   Action's `registry-token` and `oidc-audience` inputs, and `github.token` sent to ghcr.io only.
+   - The first user is k8s-trail pushing to zot with its GitHub OIDC token. zot's bearer login has
+     never been run; k8s-trail's plan starts with a spike (its P0) that needs no release here: the
+     token written to the Docker config's `registrytoken` field, and `password: ''`. That spike
+     also shows whether zot answers with a `Bearer` challenge, which a registry token needs.
+   - **Observe:** a push to a local zot with a bearer token, read back with `crane`; a `Basic`
+     challenge gives the documented error; a workflow without `id-token: write` fails with its
+     message; a push to a non-ghcr.io registry sends no `GITHUB_TOKEN` (a test registry that logs
+     the `Authorization` header).
 
 **Done when** a workflow in another repository uses `ConfigButler/settings-image@v0` and an image
-appears on ghcr.io for each commit that touches its folder. The first one is planned in
+appears on a registry (ghcr.io, or k8s-trail's zot) for each commit that touches its folder. The first one is planned in
 `ConfigButler/k8s-trail` (`configs/card-reveal`). That repository's maintainer adds that workflow,
 not this repository. Measure the commit-to-image time; expect 30–60 s, mostly runner start-up.
 

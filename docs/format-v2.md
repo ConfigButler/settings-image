@@ -48,10 +48,19 @@ relative to the folder.
 
 - **Included:** every regular file under `resources/` or `raw/`, at any depth. Either may be
   absent.
-- **Skipped:** directories (they are implied by the files), and any path with a component named
-  `.git`.
-- **Refused:** any other file at the top of the folder, and everything else in §8. A file is never
-  silently left out, and never guessed at. A refusal stops the build, and nothing is pushed.
+- **Skipped:** directories (they are implied by the files), any path with a component named
+  `.git`, and **every file at the top of the folder**, beside `resources/` and `raw/`. A tool
+  that writes `resources/` keeps its own files there (gitops-reverser's `.gittargetignore`), and
+  so can a `README.md` or a `.sops.yaml`. A skipped file is named in the writer's output (a warning,
+  and `skipped` in the CLI's JSON), so it is never left out silently.
+- **Refused:** any other directory at the top of the folder, and everything else in §8. A typo
+  such as `resource/` must stop the build, not publish an image without its resources. A file
+  under `resources/` or `raw/` is never left out, and never guessed at. A refusal stops the
+  build, and nothing is pushed.
+
+_Skipping top-level files was decided on 2026-11-03 and is not built yet
+([plan.md](plan.md), step 2f); until then the writer refuses them. It needs no new layout version:
+every folder accepted before gives the same tree and the same digest._
 
 The rules that protect the image itself (§8: links, escaping paths, size) apply everywhere, `raw/`
 included. They are about building a safe image, not about what a file means.
@@ -250,12 +259,12 @@ offending path and a reason.
 
 | Input | Why |
 |---|---|
-| a file outside `resources/` and `raw/` | say what it is: a resource, or a raw file |
+| a file in a top-level directory other than `resources/` and `raw/` | say what it is: a resource, or a raw file. A misspelt `resource/` must not publish an image without its resources (top-level _files_ are skipped, §2) |
 | a symlink or hard link | an image volume must not reach outside its folder |
 | any other non-regular file | not settings |
 | a path that escapes the folder or archive (`..`, absolute) | not settings |
 | more than **10 MiB** in total, uncompressed, summed over the input files | settings are small; a large tree is something else |
-| an **empty** folder | publishing it would roll every consumer to "no settings" |
+| an **empty** folder: no file under `resources/` or `raw/` (top-level files alone do not count) | publishing it would roll every consumer to "no settings" |
 | two archive entries for one path, or a path that is both a file and a directory | not a folder |
 
 **Under `resources/`:** a file that is not `.yaml`, `.yml` or `.json`, or does not parse; every
