@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/ConfigButler/settings-image/compare/v0.2.1...v0.2.2) (2026-11-03)
+
+
+### Bug Fixes
+
+* admit a SOPS file whose only values are empty ([c1d749f](https://github.com/ConfigButler/settings-image/commit/c1d749fad7aec2cb4ec8349ac741d4c79ea89ae9))
+
+
+### Documentation
+
+* compare settings-image with every folder-to-registry tool ([020132c](https://github.com/ConfigButler/settings-image/commit/020132cc369db4a5185668a764ef81d22a047159))
+* explain digests and provenance, add imgpkg as prior art ([93bf52a](https://github.com/ConfigButler/settings-image/commit/93bf52a00507da8b2efa589305be9b3dd47762ce))
+
 ## [0.2.1](https://github.com/ConfigButler/settings-image/compare/v0.2.0...v0.2.1) (2026-11-03)
 
 
