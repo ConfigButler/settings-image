@@ -347,7 +347,8 @@ pod, with no rollout and no record.
 ## 11. Known answers
 
 Computed with this repository's writer (oras-go v2.6.4, image-spec v1.1.1, Go 1.27.3) on
-2026-11-02, and read back from a registry with `crane`. A writer that disagrees on any of these
+2026-11-02, and read back from a registry with `crane`; unchanged with oras-go v2.7.0
+(2026-11-03). A writer that disagrees on any of these
 bytes is wrong, or has made a new layout version.
 
 **Case `configmap`.** The folder holds one file, `resources/configmap.yaml`:
