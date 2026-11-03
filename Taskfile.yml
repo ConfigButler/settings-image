@@ -89,7 +89,11 @@ tasks:
   lint-golang:
     desc: Run golangci-lint
     sources:
-      - '**/*.go'
+      # Not '**/*.go': that walks the gitignored external/ clones too, where a symlink loop
+      # (sealed-secrets' kube-libsonnet examples/*/lib -> ../../) grows until the OOM killer stops it.
+      - 'cmd/**/*.go'
+      - 'internal/**/*.go'
+      - 'pkg/**/*.go'
       - .golangci.yml
       - go.mod
       - go.sum

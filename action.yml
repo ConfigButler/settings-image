@@ -31,6 +31,11 @@ inputs:
   provenance:
     description: "'false' builds no provenance referrer and no sha- tag."
     default: 'true'
+  provenance-author:
+    description: >-
+      How much of the commit author goes into the provenance referrer, which is public wherever
+      the image is: none, name or full (name and email).
+    default: none
   username:
     description: Registry username.
     default: ${{ github.actor }}
@@ -87,6 +92,7 @@ runs:
         SI_TAGS: ${{ inputs.tags }}
         SI_SENSITIVE_KINDS: ${{ inputs.sensitive-kinds }}
         SI_PROVENANCE: ${{ inputs.provenance }}
+        SI_PROVENANCE_AUTHOR: ${{ inputs.provenance-author }}
         SI_USERNAME: ${{ inputs.username }}
         SI_PASSWORD: ${{ inputs.password }}
         SI_PLAIN_HTTP: ${{ inputs.plain-http }}
@@ -102,7 +108,11 @@ runs:
           kind="${kind//[[:space:]]/}"
           if [[ -n "$kind" ]]; then args+=(--sensitive-kind "$kind"); fi
         done <<< "$SI_SENSITIVE_KINDS"
-        if [[ "$SI_PROVENANCE" == "false" ]]; then args+=(--no-provenance); fi
+        if [[ "$SI_PROVENANCE" == "false" ]]; then
+          args+=(--no-provenance)
+        else
+          args+=(--provenance-author "$SI_PROVENANCE_AUTHOR")
+        fi
         if [[ "$SI_PLAIN_HTTP" == "true" ]]; then args+=(--plain-http); fi
         # The pair is passed only when a password is set, so password: '' leaves the Docker
         # config in charge (docs/reviews/2026-11-02-first-read.md, question 2).

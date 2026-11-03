@@ -296,7 +296,7 @@ Per-commit facts live in an OCI referrer whose `subject` is the image manifest:
 | `path` | the folder, relative to the repository root |
 | `commit` | full SHA of the commit that **last changed the folder**, not HEAD |
 | `ref` | the ref it was built from, e.g. `refs/heads/main` |
-| `author` | that commit's author, **only when asked for**: `{"name": …}` with `--provenance-author name`, `{"email": …, "name": …}` with `full`. The default, `none`, omits the field. A referrer is public wherever the image is, and must not copy an email out of a repository, least of all a private one. _(Designed 2026-11-03, not built yet: [plan.md](plan.md) step 2i; until then it is always written in full.)_ |
+| `author` | that commit's author, **only when asked for**: `{"name": …}` with `--provenance-author name`, `{"email": …, "name": …}` with `full`. The default, `none`, omits the field. A referrer is public wherever the image is, and must not copy an email out of a repository, least of all a private one. _(Default since 2026-11-03, [plan.md](plan.md) step 2i; before that it was always written in full.)_ |
 | `subject` | that commit's subject line |
 | `committedAt` | that commit's committer date, RFC 3339, UTC |
 
@@ -378,10 +378,20 @@ The manifest's exact bytes:
 {"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:2880ab7eaf378f9129049468d3e8c515eb108720d64169c35f297c35ef675169","size":151},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","digest":"sha256:8a76316fa9647d30e23e8b1d2cd2004d426a13136a2df028766efd609fa61705","size":257}],"annotations":{"ai.configbutler.settings-image.layout":"v2","org.opencontainers.image.created":"1970-01-01T00:00:00Z","org.opencontainers.image.source":"https://github.com/ConfigButler/k8s-trail"}}
 ```
 
-Its provenance with `--provenance-author full`, for commit
-`0123456789abcdef0123456789abcdef01234567` on `refs/heads/main` by `Ada <ada@example.com>`,
-subject `feat: three scoops`, committed `2026-11-02T20:41:07Z`, with `path: configs/shop` (step
-2i adds the default, `none`, as a second case):
+Its provenance, for commit `0123456789abcdef0123456789abcdef01234567` on `refs/heads/main` by
+`Ada <ada@example.com>`, subject `feat: three scoops`, committed `2026-11-02T20:41:07Z`, with
+`path: configs/shop`. By default (`--provenance-author none`, computed 2026-11-03):
+
+| | Value |
+|---|---|
+| blob | `sha256:301f5aef07c2f6d6ae5ed4cfc675f2bd3aaae2a4362a0c106fcd62c2691e80a8`, 224 bytes |
+| **referrer manifest** | `sha256:04f47a28115c599f2ef7adeef1a98fb43ff93b2be690a90ad0d775d1fac4a488`, 748 bytes |
+
+```json
+{"commit":"0123456789abcdef0123456789abcdef01234567","committedAt":"2026-11-02T20:41:07Z","path":"configs/shop","ref":"refs/heads/main","repository":"https://github.com/ConfigButler/k8s-trail","subject":"feat: three scoops"}
+```
+
+With `--provenance-author full`:
 
 | | Value |
 |---|---|

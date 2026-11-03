@@ -31,17 +31,41 @@ spec:
 `
 
 type knownAnswer struct {
+	name                    string
+	folder                  fstest.MapFS
+	wantTree                []string
+	diffID, layer, config   string
+	layerSize, manifestSize int64
+	manifest                string
+	wantManifestBytes       string
+	provenances             []provenanceAnswer
+}
+
+// provenanceAnswer is one referrer for a known image: the default (no author) and `full`.
+type provenanceAnswer struct {
 	name                     string
-	folder                   fstest.MapFS
-	wantTree                 []string
-	diffID, layer, config    string
-	layerSize, manifestSize  int64
-	manifest                 string
-	wantManifestBytes        string
-	provenance               *settingsimage.Provenance
-	wantProvenanceBlob       string
+	provenance               settingsimage.Provenance
+	wantBlob                 string
 	provenanceBlob, referrer string
 	referrerSize             int64
+}
+
+// knownProvenance is format-v2.md §11's commit, without the author.
+func knownProvenance() settingsimage.Provenance {
+	return settingsimage.Provenance{
+		Commit:      "0123456789abcdef0123456789abcdef01234567",
+		CommittedAt: "2026-11-02T20:41:07Z",
+		Path:        "configs/shop",
+		Ref:         "refs/heads/main",
+		Repository:  knownSource,
+		Subject:     "feat: three scoops",
+	}
+}
+
+func knownProvenanceFull() settingsimage.Provenance {
+	p := knownProvenance()
+	p.Author = &settingsimage.Author{Email: "ada@example.com", Name: "Ada"}
+	return p
 }
 
 func knownAnswers() []knownAnswer {
@@ -64,22 +88,29 @@ func knownAnswers() []knownAnswer {
 				`"org.opencontainers.image.created":"1970-01-01T00:00:00Z",` +
 				`"org.opencontainers.image.source":"https://github.com/ConfigButler/k8s-trail"}}`,
 			manifestSize: 598,
-			provenance: &settingsimage.Provenance{
-				Author:      &settingsimage.Author{Email: "ada@example.com", Name: "Ada"},
-				Commit:      "0123456789abcdef0123456789abcdef01234567",
-				CommittedAt: "2026-11-02T20:41:07Z",
-				Path:        "configs/shop",
-				Ref:         "refs/heads/main",
-				Repository:  knownSource,
-				Subject:     "feat: three scoops",
+			provenances: []provenanceAnswer{
+				{
+					name:       "default: no author",
+					provenance: knownProvenance(),
+					wantBlob: `{"commit":"0123456789abcdef0123456789abcdef01234567",` +
+						`"committedAt":"2026-11-02T20:41:07Z","path":"configs/shop","ref":"refs/heads/main",` +
+						`"repository":"https://github.com/ConfigButler/k8s-trail","subject":"feat: three scoops"}`,
+					provenanceBlob: "sha256:301f5aef07c2f6d6ae5ed4cfc675f2bd3aaae2a4362a0c106fcd62c2691e80a8",
+					referrer:       "sha256:04f47a28115c599f2ef7adeef1a98fb43ff93b2be690a90ad0d775d1fac4a488",
+					referrerSize:   748,
+				},
+				{
+					name:       "full",
+					provenance: knownProvenanceFull(),
+					wantBlob: `{"author":{"email":"ada@example.com","name":"Ada"},` +
+						`"commit":"0123456789abcdef0123456789abcdef01234567","committedAt":"2026-11-02T20:41:07Z",` +
+						`"path":"configs/shop","ref":"refs/heads/main",` +
+						`"repository":"https://github.com/ConfigButler/k8s-trail","subject":"feat: three scoops"}`,
+					provenanceBlob: "sha256:ce56f1d41b61539fe3ee169c1c23ff7edf39a70cc81d948789cf55d7a351bdae",
+					referrer:       "sha256:1ba0abbf99d335ce87cdc1c188679d4aa51b6f44c0956287c83fc1baa5a934cb",
+					referrerSize:   748,
+				},
 			},
-			wantProvenanceBlob: `{"author":{"email":"ada@example.com","name":"Ada"},` +
-				`"commit":"0123456789abcdef0123456789abcdef01234567","committedAt":"2026-11-02T20:41:07Z",` +
-				`"path":"configs/shop","ref":"refs/heads/main","repository":"https://github.com/ConfigButler/k8s-trail",` +
-				`"subject":"feat: three scoops"}`,
-			provenanceBlob: "sha256:ce56f1d41b61539fe3ee169c1c23ff7edf39a70cc81d948789cf55d7a351bdae",
-			referrer:       "sha256:1ba0abbf99d335ce87cdc1c188679d4aa51b6f44c0956287c83fc1baa5a934cb",
-			referrerSize:   748,
 		},
 		{
 			name: "nested",
@@ -125,24 +156,24 @@ func TestKnownAnswers(t *testing.T) {
 				assertEqual(t, "manifest bytes", string(b), ka.wantManifestBytes)
 			}
 
-			if ka.provenance != nil {
-				checkProvenance(t, img, ka)
+			for _, pa := range ka.provenances {
+				t.Run(pa.name, func(t *testing.T) { checkProvenance(t, img, pa) })
 			}
 		})
 	}
 }
 
-func checkProvenance(t *testing.T, img *settingsimage.Image, ka knownAnswer) {
+func checkProvenance(t *testing.T, img *settingsimage.Image, pa provenanceAnswer) {
 	t.Helper()
-	blob, err := ka.provenance.MarshalBlob()
+	blob, err := pa.provenance.MarshalBlob()
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertEqual(t, "provenance blob", string(blob), ka.wantProvenanceBlob)
-	if err := img.AttachProvenance(t.Context(), *ka.provenance); err != nil {
+	assertEqual(t, "provenance blob", string(blob), pa.wantBlob)
+	if err := img.AttachProvenance(t.Context(), pa.provenance); err != nil {
 		t.Fatalf("AttachProvenance: %v", err)
 	}
-	assertEqual(t, "referrer", img.Provenance.Digest.String(), ka.referrer)
-	assertEqual(t, "referrer size", img.Provenance.Size, ka.referrerSize)
-	assertReferrerBlob(t, img, ka.provenanceBlob)
+	assertEqual(t, "referrer", img.Provenance.Digest.String(), pa.referrer)
+	assertEqual(t, "referrer size", img.Provenance.Size, pa.referrerSize)
+	assertReferrerBlob(t, img, pa.provenanceBlob)
 }

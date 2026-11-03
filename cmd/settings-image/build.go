@@ -32,6 +32,7 @@ type buildFlags struct {
 	noProvenance  bool
 	allowDirty    bool
 	allowShallow  bool
+	author        string
 	plainHTTP     bool
 	username      string
 	passwordStdin bool
@@ -103,6 +104,8 @@ func parseBuildFlags(push bool, args []string, stderr io.Writer) (*buildFlags, e
 	fs.BoolVar(&f.noProvenance, "no-provenance", false, "build no referrer, and skip Git entirely")
 	fs.BoolVar(&f.allowDirty, "allow-dirty", false, "build a folder with uncommitted changes, without provenance")
 	fs.BoolVar(&f.allowShallow, "allow-shallow", false, "accept a shallow clone; provenance names HEAD")
+	fs.StringVar(&f.author, "provenance-author", authorNone,
+		"how much of the commit author goes into provenance: none, name or full")
 	if push {
 		fs.BoolVar(&f.plainHTTP, "plain-http", false, "talk HTTP to the registry")
 		fs.StringVar(&f.username, "username", "", "registry username")
@@ -114,22 +117,32 @@ func parseBuildFlags(push bool, args []string, stderr io.Writer) (*buildFlags, e
 	if err != nil {
 		return nil, &usageError{msg: err.Error()}
 	}
-	switch {
-	case len(positional) != 1:
+	if len(positional) != 1 {
 		return nil, &usageError{
 			msg: fmt.Sprintf("%s takes exactly one folder, got %d arguments", name, len(positional)),
 		}
-	case push && f.repository == "":
-		return nil, &usageError{msg: "push needs --repository"}
-	case f.passwordStdin && f.username == "":
-		return nil, &usageError{msg: "--password-stdin needs --username"}
 	}
 	f.folder = positional[0]
-	//nolint:gosec // G703: reading the folder the user named is the point.
-	if st, err := os.Stat(f.folder); err != nil || !st.IsDir() {
-		return nil, &usageError{msg: fmt.Sprintf("%s is not a directory", f.folder)}
+	if msg := f.invalid(); msg != "" {
+		return nil, &usageError{msg: msg}
 	}
 	return f, nil
+}
+
+// invalid says what is wrong with a combination of flags, or "".
+func (f *buildFlags) invalid() string {
+	switch {
+	case f.push && f.repository == "":
+		return "push needs --repository"
+	case f.passwordStdin && f.username == "":
+		return "--password-stdin needs --username"
+	case f.author != authorNone && f.author != authorName && f.author != authorFull:
+		return fmt.Sprintf("--provenance-author is none, name or full, not %q", f.author)
+	}
+	if st, err := os.Stat(f.folder); err != nil || !st.IsDir() {
+		return fmt.Sprintf("%s is not a directory", f.folder)
+	}
+	return ""
 }
 
 // parseInterspersed parses flags that may come before or after the positional arguments.
@@ -174,7 +187,7 @@ func buildAndPush(ctx context.Context, f *buildFlags, stdin io.Reader, stderr io
 		Skipped:    append([]string{}, rendered.Skipped...),
 	}
 	if info != nil {
-		if err := img.AttachProvenance(ctx, provenance(info, source)); err != nil {
+		if err := img.AttachProvenance(ctx, provenance(info, source, f.author)); err != nil {
 			return nil, err
 		}
 		prov, commit := img.Provenance.Digest.String(), info.Commit
@@ -264,7 +277,15 @@ func readGit(ctx context.Context, f *buildFlags, stderr io.Writer) (*gitinfo.Inf
 	return info, source, nil
 }
 
-func provenance(info *gitinfo.Info, source string) settingsimage.Provenance {
+// The values of --provenance-author. A referrer is public wherever the image is, so the default
+// copies nothing about the author out of the repository (docs/format-v2.md §9).
+const (
+	authorNone = "none"
+	authorName = "name"
+	authorFull = "full"
+)
+
+func provenance(info *gitinfo.Info, source, author string) settingsimage.Provenance {
 	p := settingsimage.Provenance{
 		Commit:      info.Commit,
 		CommittedAt: info.CommittedAt,
@@ -273,7 +294,10 @@ func provenance(info *gitinfo.Info, source string) settingsimage.Provenance {
 		Repository:  source,
 		Subject:     info.Subject,
 	}
-	if info.AuthorName != "" || info.AuthorEmail != "" {
+	switch {
+	case author == authorName && info.AuthorName != "":
+		p.Author = &settingsimage.Author{Name: info.AuthorName}
+	case author == authorFull && (info.AuthorName != "" || info.AuthorEmail != ""):
 		p.Author = &settingsimage.Author{Email: info.AuthorEmail, Name: info.AuthorName}
 	}
 	return p

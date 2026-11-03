@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/content/oci"
 )
 
@@ -343,4 +345,68 @@ func TestBuildSkipsKnownTopLevelFiles(t *testing.T) {
 	if code != exitRefused || !strings.Contains(stderr, "refused menu.yaml") {
 		t.Errorf("menu.yaml beside resources/: exit %d, stderr %q", code, stderr)
 	}
+}
+
+// The provenance names no author unless asked: a referrer is public wherever the image is. The
+// choice changes the referrer only, never the image.
+func TestBuildProvenanceAuthor(t *testing.T) {
+	r := newRepo(t)
+	for _, tt := range []struct{ flag, wantAuthor string }{
+		{"", ""},
+		{"none", ""},
+		{"name", `{"name":"Ada"}`},
+		{"full", `{"email":"ada@example.com","name":"Ada"}`},
+	} {
+		t.Run("author="+tt.flag, func(t *testing.T) {
+			layout := filepath.Join(t.TempDir(), "out")
+			args := []string{"build", r.shop(), "--oci-layout", layout}
+			if tt.flag != "" {
+				args = append(args, "--provenance-author", tt.flag)
+			}
+			res := cliJSON(t, args...)
+			if res.Digest != knownDigest {
+				t.Errorf("digest %s: the author must not change the image", res.Digest)
+			}
+			blob := referrerBlob(t, layout, *res.Provenance)
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(blob, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if string(fields["author"]) != tt.wantAuthor {
+				t.Errorf("author %s, want %q; blob %s", fields["author"], tt.wantAuthor, blob)
+			}
+			if tt.wantAuthor == "" && strings.Contains(string(blob), "ada@example.com") {
+				t.Errorf("the email leaked: %s", blob)
+			}
+		})
+	}
+	if code, _, _ := cli(t, "build", r.shop(), "--provenance-author", "email"); code != exitUsage {
+		t.Errorf("--provenance-author email: exit %d, want %d", code, exitUsage)
+	}
+}
+
+// referrerBlob reads the provenance referrer's one blob out of an OCI layout.
+func referrerBlob(t *testing.T, layout, referrer string) []byte {
+	t.Helper()
+	store, err := oci.New(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := store.Resolve(t.Context(), referrer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := content.FetchAll(t.Context(), store, desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m ocispec.Manifest
+	if err := json.Unmarshal(b, &m); err != nil || len(m.Layers) != 1 {
+		t.Fatalf("referrer manifest %s: %v", b, err)
+	}
+	blob, err := content.FetchAll(t.Context(), store, m.Layers[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return blob
 }

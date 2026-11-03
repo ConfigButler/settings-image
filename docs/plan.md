@@ -193,6 +193,11 @@ from both registries has the expected files, modes, annotations and referrer.
      case.
    - **Observe:** a pushed referrer, read with `oras discover` and `oras pull`, has no `author`
      by default, `{"name": …}` with `name`, and both fields with `full`.
+   - **Built and observed** (2026-11-03). The default's known answer is referrer
+     `sha256:04f47a28…`, blob `sha256:301f5aef…` (224 bytes, checked with `sha256sum`); `full`
+     keeps `sha256:1ba0abbf…`. Pushed to the k3d registry from a scratch repository in each mode:
+     one image digest for all three, and `oras discover` + `oras pull` read back no `author`,
+     `{"name":"Ada"}`, and `{"email":…,"name":"Ada"}`.
 
 **Done when** a workflow in another repository uses `ConfigButler/settings-image@v0` and an image
 appears on a registry for each commit that touches its folder. That repository's maintainer adds
