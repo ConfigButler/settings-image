@@ -160,4 +160,20 @@ action `name` that is unique on the Marketplace.
 | `description` | `Turn a folder of settings into a mountable OCI image and push it` |
 | `branding` | a Feather icon (`package`) and a colour |
 
-Listing it is a manual step in the GitHub UI after a release.
+Listing it is a manual step in the GitHub UI, and it has to happen **while the release is still
+a draft**. The checkbox ("Publish this Action to the GitHub Marketplace") has no API, and
+immutable releases are on, so a published release can no longer be listed. The release workflow
+publishes its draft on its own, so it is paused for the listing:
+
+1. In **Settings → Environments → `release`**, add yourself as a **required reviewer**.
+2. Merge the release PR. The release workflow builds and attaches every binary to the draft, then
+   waits at _Publish GitHub Release_ for a review.
+3. Open the draft under **Releases** and **Edit** it. Its tag is already filled in. Tick **Publish
+   this Action to the GitHub Marketplace**, choose a primary category, and **Publish release**.
+4. In the waiting run, **Review deployments → Approve**. The job sees the release is already
+   published and leaves it alone. The major tag moves and the next release PR opens as usual.
+5. Remove the required reviewer, so later releases publish without waiting.
+
+Without a reviewer the `release` environment does nothing. A release that skips the pause stays
+off the Marketplace page but is still used: `@v0` moves to it. Once the Action is listed, a later
+release only needs the pause to show its version on the Marketplace page.

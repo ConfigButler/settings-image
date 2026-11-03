@@ -86,7 +86,8 @@ Each was observed as described; the commit messages have the details.
    ([github-action.md §3](github-action.md#3-where-the-binary-comes-from)). Only when the 10–20 s
    build matters.
 7. **List the Action on the Marketplace** ([github-action.md §6](github-action.md#6-the-marketplace)):
-   a manual step on a release page.
+   a manual step on the next release's draft; the release workflow waits for it when the `release`
+   environment has a required reviewer.
 
 **Phase 2 is done when** a workflow in another repository uses `ConfigButler/settings-image@v0`
 and an image appears on a registry for each commit that touches its folder. Measure the

@@ -14,6 +14,9 @@
 # A draft left behind by a failed run is finished by hand: run this workflow (workflow_dispatch)
 # with its tag. It builds from the draft's own commit, attaches the assets, publishes and moves the
 # major tag. release-please has already marked that release as tagged, so a new push would not.
+#
+# To list a release on the Marketplace, publish-release waits for an approval on the `release`
+# environment; see that job and docs/github-action.md §6.
 name: Release
 
 on:
@@ -229,12 +232,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Publish the release only after every asset is attached. Publishing creates the tag.
+  #
+  # The `release` environment is the pause for a Marketplace listing (docs/github-action.md §6).
+  # Without protection rules it passes straight through. With a required reviewer, this job waits,
+  # with the complete draft, for an approval: a maintainer publishes the draft in the UI with
+  # "Publish this Action to the GitHub Marketplace" ticked (no API can tick it, and an immutable
+  # release cannot be listed afterwards), then approves, and the jobs below finish the release.
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [target, publish-cli]
     if: ${{ !cancelled() && needs.publish-cli.result == 'success' }}
+    environment: release
     permissions:
       contents: write
     steps:
@@ -242,7 +252,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.target.outputs.tag_name }}
-        run: gh release edit "${TAG_NAME}" --draft=false --repo "${{ github.repository }}"
+        run: |
+          set -euo pipefail
+          if [[ "$(gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)" != "true" ]]; then
+            echo "::notice::${TAG_NAME} was already published by hand (a Marketplace listing); nothing to publish"
+            exit 0
+          fi
+          gh release edit "${TAG_NAME}" --draft=false --repo "${GITHUB_REPOSITORY}"
 
   # Move the floating major tag (v0, later v1) to the release, the Actions convention behind
   # `uses: ConfigButler/settings-image@v0` (docs/github-action.md §4). Only a tag is force-pushed,
