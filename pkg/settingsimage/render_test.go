@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -51,6 +52,13 @@ func renderRefusals() []renderRefusal {
 			folder:   fstest.MapFS{"README.md": file("x"), ".gittargetignore": file("")},
 			wantPath: ".",
 			wantIn:   "empty",
+		},
+		{
+			// An empty typo must not pass silently beside real content.
+			name:     "an empty directory at the top",
+			folder:   fstest.MapFS{"raw/a.txt": file("x"), "resource": &fstest.MapFile{Mode: fs.ModeDir}},
+			wantPath: "resource",
+			wantIn:   "a directory beside",
 		},
 		{
 			name:     "a file at the top",
@@ -417,7 +425,19 @@ func TestRenderArchiveRefusals(t *testing.T) {
 			wantPath: "raw/a",
 			wantIn:   "both",
 		},
-		{name: "empty", entries: []tarEntry{{name: "d/", dir: true}}, wantPath: ".", wantIn: "empty"},
+		{name: "empty", entries: []tarEntry{{name: "raw/", dir: true}}, wantPath: ".", wantIn: "empty"},
+		{
+			name:     "a directory at the top",
+			entries:  []tarEntry{{name: "raw/a", body: "1"}, {name: "resource/", dir: true}},
+			wantPath: "resource",
+			wantIn:   "a directory beside",
+		},
+		{
+			name:     "a directory entry and a file at one path",
+			entries:  []tarEntry{{name: "raw/a/", dir: true}, {name: "raw/a", body: "1"}},
+			wantPath: "raw/a",
+			wantIn:   "both",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -483,4 +503,31 @@ func keys(tree settingsimage.Tree) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+// endlessFS is a folder whose raw/huge never ends: Render must refuse it at the size limit rather
+// than read it into memory first.
+type endlessFS struct{ fstest.MapFS }
+
+func (e endlessFS) Open(name string) (fs.File, error) {
+	if name == "raw/huge" {
+		return endlessFile{}, nil
+	}
+	return e.MapFS.Open(name)
+}
+
+type endlessFile struct{}
+
+func (endlessFile) Stat() (fs.FileInfo, error) { return nil, fs.ErrInvalid }
+func (endlessFile) Close() error               { return nil }
+
+func (endlessFile) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
+}
+
+func TestRenderRefusesAHugeFileWithoutReadingIt(t *testing.T) {
+	folder := endlessFS{fstest.MapFS{"raw/huge": file("")}}
+	_, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
+	assertRefused(t, err, ".", "more than")
 }

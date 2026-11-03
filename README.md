@@ -16,10 +16,29 @@ configs/shop/                                    /etc/shop/ in the pod, read-onl
   pods.
 - **Nothing in the image executes**: no base image, no shell, just your files.
 
+## Kubernetes-aware, not Kubernetes-only
+
+settings-image is a **settings publisher**, not a general folder-to-image tool. It knows
+Kubernetes objects: it checks what is in `resources/`, turns ConfigMaps into files, insists that a
+Secret is encrypted, and refuses a folder that looks wrong (more than 10 MiB, an unknown file
+beside the two folders). For an arbitrary pile of files, a `FROM scratch` Dockerfile is the
+simpler tool; a folder with only `raw/` skips every Kubernetes check.
+
+**Kubernetes is not required to read the result.** It is a plain OCI image, so anything that pulls
+images can get the files out:
+
+```bash
+crane export ghcr.io/acme/shop-settings@sha256:e788a6fe… - | tar x -C /etc/shop   # any machine
+docker run --mount type=image,source=ghcr.io/acme/shop-settings@sha256:e788a6fe…,target=/settings …
+```
+
+(`--mount type=image` is experimental in Docker; checked on Docker 29.2.) The image has no
+entrypoint and nothing in it runs, so it is only ever a source of files.
+
 > **Status: v0.1.** The CLI and the GitHub Action work and are used in this repository's own
 > tests; the format may still change before v1. See [docs/plan.md](docs/plan.md).
 
-## What you need
+## What you need to mount it in Kubernetes
 
 - **Kubernetes 1.35 or later**, where image volumes are on by default (stable in 1.36). On 1.33 and
   1.34 they are beta: turn on the `ImageVolume` feature gate on the API server and every kubelet.

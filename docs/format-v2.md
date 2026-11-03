@@ -262,13 +262,17 @@ offending path and a reason.
 
 | Input | Why |
 |---|---|
-| a file outside `resources/` and `raw/`, unless it is a known top-level file (§2) | say what it is: a resource, or a raw file. A resource one level too high, or a misspelt `resource/`, must not publish an image without it |
+| a file outside `resources/` and `raw/`, unless it is a known top-level file (§2), and any directory beside them, even an empty one | say what it is: a resource, or a raw file. A resource one level too high, or a misspelt `resource/`, must not publish an image without it |
 | a symlink or hard link | an image volume must not reach outside its folder |
 | any other non-regular file | not settings |
 | a path that escapes the folder or archive (`..`, absolute) | not settings |
-| more than **10 MiB** in total, uncompressed, summed over the input files | settings are small; a large tree is something else |
+| more than **10 MiB** in total, uncompressed, summed over the input files. A writer stops reading at the limit; it never loads a larger file first | settings are small; a large tree is something else |
 | an **empty** folder: no file under `resources/` or `raw/` (skipped top-level files do not count) | publishing it would roll every consumer to "no settings" |
 | two archive entries for one path, or a path that is both a file and a directory | not a folder |
+
+A writer's API that takes a tree directly (in Go, `Build(Tree)`) checks it too, whoever made it:
+every path must be clean and relative (no leading `/`, no `.` or `..` component, no empty
+component), and no path may be both a file and a directory.
 
 **Under `resources/`:** a file that is not `.yaml`, `.yml` or `.json`, or does not parse; every
 rule of §4's table; a Secret or sensitive kind that breaks §4's encryption rules; a SOPS file that

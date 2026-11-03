@@ -183,3 +183,19 @@ func TestProvenanceKeepsHTMLCharacters(t *testing.T) {
 	}
 	assertEqual(t, "blob", string(b), `{"subject":"fix: a < b & c > d"}`)
 }
+
+// TestBuildRefusesAnUnsafeTree: Build is public, so it checks a Tree itself, whoever made it. "/a"
+// used to loop forever, and "../a" went into the layer as a path outside the image.
+func TestBuildRefusesAnUnsafeTree(t *testing.T) {
+	for _, p := range []string{"/a", "../a", "raw/../../a", "raw//a", "raw/./a", "raw/a/", ".", ""} {
+		t.Run(p, func(t *testing.T) {
+			_, err := settingsimage.Build(t.Context(), settingsimage.Tree{p: []byte("x")}, settingsimage.BuildOptions{})
+			assertRefused(t, err, p, "clean relative path")
+		})
+	}
+	t.Run("file and directory", func(t *testing.T) {
+		tree := settingsimage.Tree{"raw/a": []byte("1"), "raw/a/b": []byte("2")}
+		_, err := settingsimage.Build(t.Context(), tree, settingsimage.BuildOptions{})
+		assertRefused(t, err, "raw/a", "both")
+	})
+}

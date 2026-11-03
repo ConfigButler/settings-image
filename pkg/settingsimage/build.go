@@ -53,6 +53,9 @@ func Build(ctx context.Context, tree Tree, opts BuildOptions) (*Image, error) {
 	if len(tree) == 0 {
 		return nil, refuse(".", "the tree is empty")
 	}
+	if err := checkTree(tree); err != nil {
+		return nil, err
+	}
 	l, err := buildLayer(tree)
 	if err != nil {
 		return nil, err

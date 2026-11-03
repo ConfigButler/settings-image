@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -54,7 +56,7 @@ func Render(fsys fs.FS, opts RenderOptions) (*Rendered, error) {
 		}
 		switch {
 		case d.IsDir():
-			return nil
+			return in.addDir(p)
 		case d.Type()&fs.ModeSymlink != 0:
 			return refuse(p, "a symlink; an image volume must not reach outside its folder")
 		case !d.Type().IsRegular():
@@ -62,7 +64,7 @@ func Render(fsys fs.FS, opts RenderOptions) (*Rendered, error) {
 		case in.skip(p):
 			return nil
 		}
-		b, err := fs.ReadFile(fsys, p)
+		b, err := in.readFile(fsys, p)
 		if err != nil {
 			return err
 		}
@@ -121,7 +123,7 @@ func (in *input) addEntry(tr *tar.Reader, hdr *tar.Header, root string) error {
 	}
 	switch hdr.Typeflag {
 	case tar.TypeDir:
-		return nil
+		return in.addDir(p)
 	case tar.TypeSymlink, tar.TypeLink:
 		return refuse(p, "a link; an image volume must not reach outside its folder")
 	case tar.TypeReg:
@@ -182,9 +184,9 @@ func hasGitComponent(p string) bool {
 }
 
 // IsKnownTopLevelFile reports whether a file of this name, at the top of a settings folder, is
-// skipped rather than refused (format-v2.md §2). The list is closed: gitops-reverser's own list
-// of files it tolerates without managing them, plus its .gittargetignore. Any other file at the
-// top is refused.
+// skipped rather than refused (format-v2.md §2). The list is closed: the files a repository
+// commonly keeps beside its content (a README, a licence, Git and SOPS settings, gitops-reverser's
+// .gittargetignore). Any other file at the top is refused.
 func IsKnownTopLevelFile(name string) bool {
 	switch name {
 	case ".gittargetignore", ".sops.yaml", ".gitignore", ".gitattributes", ".gitkeep", ".keep",
@@ -197,8 +199,55 @@ func IsKnownTopLevelFile(name string) bool {
 // input is the folder as read: relative path to bytes.
 type input struct {
 	files   map[string][]byte
+	dirs    map[string]bool // directories the input names, even empty ones
 	skipped []string
 	size    int64
+}
+
+// addDir records a directory, so render can refuse one that no file reveals: an empty resource/
+// typo, or an archive's directory entry at the path of a file.
+func (in *input) addDir(p string) error {
+	if p == "." || p == "" {
+		return nil
+	}
+	if in.dirs == nil {
+		in.dirs = map[string]bool{}
+	}
+	in.dirs[p] = true
+	return nil
+}
+
+// checkDirs refuses a directory that holds no file to refuse: at the top of the folder only
+// resources/ and raw/ may be one (format-v2.md §2), and no path is both a file and a directory.
+func (in *input) checkDirs() error {
+	for _, d := range slices.Sorted(maps.Keys(in.dirs)) {
+		if _, ok := in.files[d]; ok {
+			return refuse(d, "both a file and a directory")
+		}
+		if !strings.Contains(d, "/") && d != ResourcesDir && d != RawDir {
+			return refuse(d, "a directory beside resources/ and raw/; only those two hold settings")
+		}
+	}
+	return nil
+}
+
+// readFile reads p, but never more than the size limit allows: a huge file is refused, not
+// loaded into memory first.
+func (in *input) readFile(fsys fs.FS, p string) ([]byte, error) {
+	f, err := fsys.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	remaining := MaxInputSize - in.size
+	b, err := io.ReadAll(io.LimitReader(f, remaining+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > remaining {
+		return nil, refuse(".", "more than %d bytes in total", MaxInputSize)
+	}
+	return b, nil
 }
 
 // skip reports whether p is a known top-level file, and records it if so. A skipped file is never
@@ -240,6 +289,9 @@ func (in *input) render(opts RenderOptions) (*Rendered, error) {
 		}
 		tree[p] = b
 	}
+	if err := in.checkDirs(); err != nil {
+		return nil, err
+	}
 	configMaps, err := renderResources(in.files, opts)
 	if err != nil {
 		return nil, err
@@ -254,8 +306,20 @@ func (in *input) render(opts RenderOptions) (*Rendered, error) {
 	return &Rendered{Tree: tree, Skipped: in.skipped}, nil
 }
 
+// checkTree refuses a tree a layer cannot safely hold. Build is public, and its caller need not
+// have come through Render: every path must be clean, relative and inside the image.
+func checkTree(tree Tree) error {
+	for p := range tree {
+		if p == "." || !fs.ValidPath(p) {
+			return refuse(p, "not a clean relative path inside the image "+
+				"(no leading /, no . or .. component, no empty component)")
+		}
+	}
+	return checkNoFileIsADirectory(tree)
+}
+
 // checkNoFileIsADirectory refuses a tree where one path is both a file and a parent of another:
-// a tar cannot hold both. Only an archive can produce it.
+// a tar cannot hold both. Only an archive, or a hand-made Tree, can produce it.
 func checkNoFileIsADirectory(tree Tree) error {
 	for p := range tree {
 		for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {

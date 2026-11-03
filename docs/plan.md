@@ -56,6 +56,10 @@ Each was observed as described; the commit messages have the details.
   Action's script run against zot with a fake OIDC endpoint.
 - **2h, a timestamp tag that never moves** (2026-11-03): a re-run of an old commit moves `main`
   back, but the highest timestamp tag stays on the newest commit.
+- **Hardening the package API** (2026-11-03): `Build(Tree)` checks every path itself (`"/a"` used
+  to loop forever, `"../a"` went into the layer); a file is read only up to the size limit; an
+  empty directory beside `resources/` and `raw/`, or an archive's directory entry at a file's path,
+  is refused.
 - **2i, provenance names no author by default** (2026-11-03): one image digest in all three modes;
   `oras pull` of the referrer shows no author, a name, or both.
 
@@ -76,11 +80,8 @@ Each was observed as described; the commit messages have the details.
    trusts GitHub's issuer; zot with a password file and bearer login on at once.
 4. **The first release with no manual step** (the next release-please PR): `gh attestation verify`
    passes on a downloaded binary, and `gh release verify` confirms the release is immutable.
-5. **Hardening the package API:**
-   - validate paths at the public `Build(Tree)` entry point, not only in `Render`;
-   - enforce the size limit before reading a file, and add a file-count limit;
-   - a production example of consuming a SOPS-encrypted Secret: who decrypts, and where the key
-     lives.
+5. **A production example of consuming a SOPS-encrypted Secret:** who decrypts, and where the key
+   lives.
 6. **The Action downloads a released binary** with a `version` input, instead of building it
    ([github-action.md §3](github-action.md#3-where-the-binary-comes-from)). Only when the 10–20 s
    build matters.
