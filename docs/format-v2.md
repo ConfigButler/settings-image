@@ -156,8 +156,10 @@ is admitted only when:
   or `unencrypted_suffix`. None means SOPS's default, `unencrypted_suffix: _unencrypted`;
 - every value that rule encrypts is `ENC[AES256_GCM,data:…,iv:…,tag:…,type:…]`, with the rule
   applied to the value's key path exactly as SOPS does (`Tree.shouldBeEncrypted`). An empty
-  string and `null` are exempt;
-- at least one value is encrypted.
+  string, `null` and an empty map or list are exempt: SOPS has nothing to encrypt in them;
+- the rule covers at least one value: one is encrypted, or is an empty value the rule would have
+  encrypted. A `Secret` whose only value is `""` is admitted, a file whose rule matches nothing is
+  not.
 
 Refused by name: `encrypted_comment_regex` and `unencrypted_comment_regex`, because what they
 encrypt depends on comments, which decoding does not keep; and `mac_only_encrypted`, because its

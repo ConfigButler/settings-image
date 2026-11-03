@@ -50,6 +50,67 @@ func TestSOPSRulesAdmitted(t *testing.T) {
 	}
 }
 
+// SOPS has nothing to encrypt in an empty value and writes it as it is, so a file whose only values
+// are empty is what SOPS itself produces for a Secret that is still a placeholder.
+func TestSOPSFileWithOnlyEmptyValuesAdmitted(t *testing.T) {
+	fixture := sopsFixture(t, "empty-value.yaml")
+	const value = "data:\n    apiKey: \"\"\n"
+	if !strings.Contains(fixture, value) {
+		t.Fatalf("fixture has no %q", value)
+	}
+	for name, replacement := range map[string]string{
+		"empty string": value,
+		"null":         "data:\n    apiKey: null\n",
+		"null field":   "data: null\n",
+		"empty map":    "data: {}\n",
+		"empty list":   "stringData:\n    a: []\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := strings.Replace(fixture, value, replacement, 1)
+			tree, err := renderOne(doc, settingsimage.RenderOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertEqual(t, "bytes", string(tree["resources/s.yaml"]), doc)
+		})
+	}
+}
+
+// An empty value stands in for ciphertext only where the rule would have encrypted it, and excuses
+// nothing beside it.
+func TestSOPSEmptyValuesRefused(t *testing.T) {
+	const value = "    apiKey: \"\"\n"
+	fixture := sopsFixture(t, "empty-value.yaml")
+	if !strings.Contains(fixture, value) {
+		t.Fatalf("fixture has no %q", value)
+	}
+	tests := []struct {
+		name   string
+		doc    string
+		wantIn string
+	}{
+		{
+			name: "outside the rule",
+			doc: "apiVersion: v1\nkind: Thing\nmetadata:\n  name: t\n" +
+				"spec:\n  a: \"\"\n  b: null\n  c: {}\n  d: []\n" +
+				"sops:\n  encrypted_regex: ^nothing$\n" +
+				"  mac: ENC[AES256_GCM,data:eA==,iv:eA==,tag:eA==,type:str]\n",
+			wantIn: "no value is encrypted",
+		},
+		{
+			name:   "plaintext beside one",
+			doc:    strings.Replace(fixture, value, value+"    token: hunter2\n", 1),
+			wantIn: "data.token is in plaintext",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := renderOne(tt.doc, settingsimage.RenderOptions{})
+			assertRefused(t, err, "resources/s.yaml", tt.wantIn)
+		})
+	}
+}
+
 // Every example folder builds; task test-mount checks what a pod sees of them.
 func TestExamplesRender(t *testing.T) {
 	dirs, err := filepath.Glob("../../examples/*/")

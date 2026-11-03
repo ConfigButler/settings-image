@@ -125,8 +125,9 @@ func sopsRuleOf(p string, meta map[string]any) (*sopsRule, error) {
 }
 
 // checkSOPSEncrypted refuses a SOPS file in which a value its rule encrypts is in plaintext, or
-// in which nothing is encrypted at all. An empty string and null are left alone, as SOPS leaves
-// them.
+// in which the rule covers nothing at all. An empty value (an empty string, null, or an empty map
+// or list) is left alone, as SOPS leaves it, so one the rule covers is as good as ciphertext: a
+// Secret whose only value is "" is what SOPS writes for it.
 func checkSOPSEncrypted(p string, docs []document, rule *sopsRule) error {
 	w := sopsWalker{rule: rule}
 	for _, doc := range docs {
@@ -139,7 +140,7 @@ func checkSOPSEncrypted(p string, docs []document, rule *sopsRule) error {
 	switch {
 	case w.plaintext != "":
 		return refuse(p, "SOPS-encrypted, but %s is in plaintext (its %s rule encrypts it)", w.plaintext, rule.name)
-	case w.encrypted == 0:
+	case w.covered == 0:
 		return refuse(p, "SOPS metadata, but no value is encrypted")
 	}
 	return nil
@@ -148,11 +149,17 @@ func checkSOPSEncrypted(p string, docs []document, rule *sopsRule) error {
 // sopsWalker finds the first plaintext value that the rule says is encrypted.
 type sopsWalker struct {
 	rule      *sopsRule
-	encrypted int
+	covered   int    // ciphertext values, and empty values the rule would have encrypted
 	plaintext string // the key path of the first plaintext value
 }
 
 func (w *sopsWalker) walk(path []string, v any) {
+	if sopsEmpty(v) {
+		if w.rule.encrypted(path) {
+			w.covered++
+		}
+		return
+	}
 	switch v := v.(type) {
 	case map[string]any:
 		for _, k := range sortedKeys(v) {
@@ -162,18 +169,28 @@ func (w *sopsWalker) walk(path []string, v any) {
 		for _, item := range v {
 			w.walk(path, item) // SOPS walks a list's items at the list's own path
 		}
-	case nil:
-		// SOPS does not encrypt null.
 	default:
-		if s, ok := v.(string); ok && (s == "" || sopsCiphertext.MatchString(s)) {
-			if s != "" {
-				w.encrypted++
-			}
-			return
-		}
-		if w.rule.encrypted(path) && w.plaintext == "" {
+		if s, ok := v.(string); ok && sopsCiphertext.MatchString(s) {
+			w.covered++
+		} else if w.rule.encrypted(path) && w.plaintext == "" {
 			w.plaintext = strings.Join(path, ".")
 		}
+	}
+}
+
+// sopsEmpty reports a value SOPS has nothing to encrypt in, and so writes as it is.
+func sopsEmpty(v any) bool {
+	switch v := v.(type) {
+	case nil:
+		return true
+	case string:
+		return v == ""
+	case map[string]any:
+		return len(v) == 0
+	case []any:
+		return len(v) == 0
+	default:
+		return false
 	}
 }
 

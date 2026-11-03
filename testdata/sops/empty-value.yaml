@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: api
+type: Opaque
+data:
+    apiKey: ""
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBMOHhYVUZ1dkhqUkR0c3BY
+            TjN1QnE0VWVyR1ZRbFZHSmhmaDNLc2N5YkRZCkZSVlZuUEsvdzUxNTlpQ2NFdnky
+            c2VXNElVRnJLc2JuSzdmaUswWWVPNlEKLS0tIFlZQ2tGMWcyYjJNZkorSHBUZGZP
+            Mm1lKzliVUx2VXA2SHVFT21kdlZlZG8KGh8koyOBNktXsBRu7N3+PsxH7LF84w+w
+            WhB3my8OnITNXzFrZ7xz8QCatVcLNa6bmfgc7QRiOzweGj1UvAil7Q==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age19qudjthka6ekyd3wxfkwg443n28lwdnx75jelx8p24j8gv6rmdwqlez4q3
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-11-03T21:58:13Z"
+    mac: ENC[AES256_GCM,data:fsppCP2GLgbLx2lz3hpfSxgEmRw5hiL7Zvw6B64Uwoh6KU+6rGO5TSUDsi8vRkYOzSPrBwXoUJSBfT90tDU7DbvXv8PdXr00Mv8VFYOVtN+YYOvdAcBIrE6HuUnMuCjG66eerB9zLQg0ZG9LA3y9d+7X8/t3EoO9dA2i34Uw6PY=,iv:DZ8GiIuADVRx8yY+i0cxlW3O+XnTaHAh0nzhpN7N2Ek=,tag:/W5VbfDRxFZksto9y0+Y6g==,type:str]
+    version: 3.13.3

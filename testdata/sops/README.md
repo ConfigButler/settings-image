@@ -11,6 +11,7 @@ SOPS_AGE_KEY_FILE=testdata/sops/age-test-key.txt sops decrypt testdata/sops/defa
 |---|---|---|
 | `default.yaml` | none: SOPS writes `unencrypted_suffix: _unencrypted` and encrypts every other value | no: `apiVersion`, `kind` and `metadata.name` are encrypted, so the build cannot name the resource |
 | `encrypted-regex.yaml` | `encrypted_regex: ^(data\|stringData)$` | yes |
+| `empty-value.yaml` | `encrypted_regex`, and its only value is `""`, which SOPS leaves as it is | yes |
 | `unencrypted-regex.yaml` | `unencrypted_regex` | no: it leaves `stringData.note_unencrypted` in plaintext, and a Secret's payload must be all ciphertext |
 | `encrypted-suffix.yaml` | `encrypted_suffix: Data` | yes |
 | `multi-document.yaml` | `encrypted_regex`, two documents, the `sops` block in both | yes |
