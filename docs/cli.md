@@ -1,8 +1,8 @@
 # The `settings-image` CLI
 
-_Design for phase 2 ([plan.md](plan.md)). The CLI is what the GitHub Action
-([github-action.md](github-action.md)) runs, and what a person runs by hand. The bytes it writes
-are [format-v2.md](format-v2.md)'s; this page is only the interface._
+_Reference for the command. It is what the GitHub Action ([github-action.md](github-action.md))
+runs, and what a person runs by hand. The bytes it writes are [format-v2.md](format-v2.md)'s; this
+page is only the interface._
 
 ## 1. Commands
 

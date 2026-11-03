@@ -1,9 +1,7 @@
 # Roll out settings with Flux
 
-_Design, 2026-11-03. The Flux side is standard Flux image automation and works today with any
-image; what settings-image adds is a tag that never moves backwards ([plan.md](plan.md), step 2h:
-built, and observed on a registry; not yet observed with Flux in a cluster). This page becomes a
-section of the README once it is._
+_Optional. The Flux side is standard Flux image automation; what settings-image adds is a tag that
+never moves backwards. Built and checked on a registry; not yet observed with Flux in a cluster._
 
 **A settings change becomes a Git commit in your cluster repository, made by Flux, and a rollout.
 Nobody edits a digest by hand, and nothing rolls back without a commit saying so.**
@@ -109,5 +107,5 @@ digest, so the registry must speak TLS ([background.md](background.md)).
   current one. It would make following `main` safe too, but it must read the current tag's
   provenance back from the registry and handle reverts and force-pushes. The timestamp tag comes
   first.
-- **The controller** (plan phase 3) reads a Flux `GitRepository` and publishes from inside the
+- **The controller** ([plan.md](plan.md), phase 3) reads a Flux `GitRepository` and publishes from inside the
   cluster, in seconds instead of a runner's minute. The same `ImagePolicy` then follows it.

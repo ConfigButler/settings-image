@@ -2,17 +2,13 @@
 
 _The contract between everything that writes a settings image and everything that reads one. A
 writer in this repository and a reader in another language are held to the same bytes by
-[§11's known answers](#11-known-answers) and, later, by the conformance corpus
-([plan.md](plan.md) phase 2e)._
+[§11's known answers](#11-known-answers) and, later, by a conformance corpus._
 
 Any change to the bytes described here is a **new layout version**, with one exception: an
 optional provenance field may be added (§9).
 
-Layout v1 decided what a file was from its extension. It parsed every `.yaml`, `.yml` and `.json`
-file as a Kubernetes resource, so an application's own YAML could be refused, and the Secret check
-covered a boundary nobody could see. v2 lets the author say what a file is, by the folder it is in
-([review nr2](reviews/2026-11-02-nr2.md)). v1 was never used outside this repository and has no
-writer any more.
+v2 lets the author say what a file is, by the folder it is in. (Layout v1 guessed from the file
+extension; it was never used outside this repository and has no writer any more.)
 
 ## 1. In one paragraph
 
@@ -67,9 +63,7 @@ relative to the folder.
   or `raw/` is never left out, and never guessed at. A refusal stops the build, and nothing is
   pushed.
 
-_Skipping the known top-level files was added on 2026-11-03 ([plan.md](plan.md), step 2f). It
-needed no new layout version: every folder accepted before gives the same tree and the same
-digest. In the Go API, `Rendered.Skipped` lists them._
+In the Go API, `Rendered.Skipped` lists the skipped files.
 
 The rules that protect the image itself (§8: links, escaping paths, size) apply everywhere, `raw/`
 included. They are about building a safe image, not about what a file means.
@@ -252,7 +246,7 @@ layer (`application/vnd.oci.image.layer.v1.tar+gzip`), and these annotations:
 | Annotation | Value | Why |
 |---|---|---|
 | `org.opencontainers.image.created` | `1970-01-01T00:00:00Z` | oras-go stamps `time.Now()` when it is absent, and every build would then get a new digest |
-| `ai.configbutler.settings-image.layout` | `v2` | how a reader knows what it holds ([plan.md](plan.md) phase 5) |
+| `ai.configbutler.settings-image.layout` | `v2` | how a reader knows what it holds (a reader refuses a layout it does not know) |
 | `org.opencontainers.image.source` | the source repository's URL, credentials removed (`https://github.com/<owner>/<repo>`). Omitted when unknown | ghcr.io links the package to that repository through it |
 
 **Nothing else goes in the manifest.** Every annotation is constant per source, so content
@@ -298,7 +292,7 @@ Per-commit facts live in an OCI referrer whose `subject` is the image manifest:
 | `path` | the folder, relative to the repository root |
 | `commit` | full SHA of the commit that **last changed the folder**, not HEAD |
 | `ref` | the ref it was built from, e.g. `refs/heads/main` |
-| `author` | that commit's author, **only when asked for**: `{"name": …}` with `--provenance-author name`, `{"email": …, "name": …}` with `full`. The default, `none`, omits the field. A referrer is public wherever the image is, and must not copy an email out of a repository, least of all a private one. _(Default since 2026-11-03, [plan.md](plan.md) step 2i; before that it was always written in full.)_ |
+| `author` | that commit's author, **only when asked for**: `{"name": …}` with `--provenance-author name`, `{"email": …, "name": …}` with `full`. The default, `none`, omits the field. A referrer is public wherever the image is, and must not copy an email out of a repository, least of all a private one. |
 | `subject` | that commit's subject line |
 | `committedAt` | that commit's committer date, RFC 3339, UTC |
 
@@ -328,8 +322,8 @@ then fails the whole push, although the new index was already written.
   changed the folder, e.g. `main-1793652067-0123456` for §11's commit. The branch is sanitised as for the branch
   tag, and cut to 109 characters so the tag stays within 128. It is as reproducible as the `sha-`
   tag and never moves, and its number sorts: Flux's `ImagePolicy` follows it with `numerical`
-  ([flux.md](flux.md)). It needs Git, so asking for it with `--no-provenance` or `--allow-dirty`
-  is a usage error. _(Added 2026-11-03, [plan.md](plan.md) step 2h.)_
+  ([flux.md](flux.md)). It needs the commit that last changed the folder, so asking for it with
+  `--no-provenance`, `--allow-dirty` or `--allow-shallow` is a usage error.
 - Any tag the caller names, which must already be a valid OCI tag
   (`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$`). The writer refuses an invalid one rather than rewrite it.
 

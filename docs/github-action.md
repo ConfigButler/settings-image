@@ -1,7 +1,8 @@
 # The GitHub Action
 
-_Design for phase 2 ([plan.md](plan.md)). The Action runs the CLI ([cli.md](cli.md)) in a
-workflow: a commit that changes a settings folder becomes a new settings image._
+_Reference for `ConfigButler/settings-image@v0`. The Action runs the CLI ([cli.md](cli.md)) in a
+workflow: a commit that changes a settings folder becomes a new settings image. §1–§2 are for
+users; §3–§6 are for maintaining the Action._
 
 ## 1. What a user writes
 
@@ -104,7 +105,7 @@ hole in composite actions.)
 
 ## 3. Where the binary comes from
 
-**Phase 2a: built from the Action's own source.**
+**Today: built from the Action's own source.**
 
 - `actions/setup-go` with `go-version-file: ${{ github.action_path }}/go.mod`, caching on the
   Action's `go.sum`.
@@ -113,14 +114,14 @@ hole in composite actions.)
 The binary is then always exactly the ref the workflow pinned, whether a tag, a branch or a SHA, and
 it needs no release to exist. The cost is a Go setup, about 10–20 s with a warm cache.
 
-**Phase 2b: a released binary (not built yet).** Releases carry binaries (plan.md phase 2d,
-`settings-image_<os>_<arch>` and `settings-image.sha256sums`). The Action is to download the one for
-its own version and check it against that file.
+**Later, if the build time matters: a released binary.** Releases carry binaries
+(`settings-image_<os>_<arch>` and `settings-image.sha256sums`). The Action would download the one
+for its own version and check it against that file.
 
 - `action.yml` has an input `version`, whose default is the released version. release-please keeps
   that default current through its `extra-files` generic updater: the line carries a
   `# x-release-please-version` marker.
-- `version: source` keeps 2a's behaviour, for testing an unreleased ref.
+- `version: source` keeps today's behaviour, for testing an unreleased ref.
 
 ## 4. Versioning and the floating tag
 
@@ -142,7 +143,7 @@ its own version and check it against that file.
   - the layer lists the expected files with mode `0644`;
   - the provenance referrer is listed under the fallback tag.
 
-  The prototype reads the registry with `curl` and `jq`, which every hosted runner has, instead of
+  It reads the registry with `curl` and `jq`, which every hosted runner has, instead of
   installing `crane`.
 - **A second run of the Action in the same job** must report `changed: false` with the same digest.
 - **On `main` only:** the same, pushed to `ghcr.io/configbutler/settings-image-selftest` with
@@ -159,4 +160,4 @@ action `name` that is unique on the Marketplace.
 | `description` | `Turn a folder of settings into a mountable OCI image and push it` |
 | `branding` | a Feather icon (`package`) and a colour |
 
-Listing it is a manual step in the GitHub UI after a release. It is not a phase gate.
+Listing it is a manual step in the GitHub UI after a release.
