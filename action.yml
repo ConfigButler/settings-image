@@ -23,8 +23,8 @@ inputs:
   timestamp-tag:
     description: >-
       The branch for a tag that never moves and sorts by commit time,
-      <branch>-<unix commit time>-<sha7>, e.g. ${{ github.ref_name }}. What Flux image automation
-      follows (docs/flux.md). Empty for none.
+      <branch>-<unix commit time>-<sha7>; usually the workflow's github.ref_name. What Flux image
+      automation follows (docs/flux.md). Empty for none.
     default: ''
   tags:
     description: Extra tags, one per line.

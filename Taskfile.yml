@@ -118,8 +118,10 @@ tasks:
     desc: Lint GitHub Actions workflows with actionlint (and shellcheck, when installed)
     sources:
       - .github/workflows/*.yml
+      - action.yml
     cmds:
       - actionlint
+      - test/lint/action-expressions.sh action.yml
 
   lint-markdown:
     desc: Markdown structure (markdownlint-cli2), over every tracked file
