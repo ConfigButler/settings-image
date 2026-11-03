@@ -46,6 +46,7 @@ type result struct {
 	Tags       []string `json:"tags"`
 	Provenance *string  `json:"provenance"`
 	Commit     *string  `json:"commit"`
+	Skipped    []string `json:"skipped"`
 	Changed    *bool    `json:"changed,omitempty"`
 }
 
@@ -158,15 +159,20 @@ func buildAndPush(ctx context.Context, f *buildFlags, stdin io.Reader, stderr io
 		return nil, err
 	}
 
-	tree, err := settingsimage.Render(os.DirFS(f.folder), settingsimage.RenderOptions{SensitiveKinds: f.sensitive})
+	rendered, err := render(f, stderr)
 	if err != nil {
 		return nil, err
 	}
-	img, err := settingsimage.Build(ctx, tree, settingsimage.BuildOptions{Source: source})
+	img, err := settingsimage.Build(ctx, rendered.Tree, settingsimage.BuildOptions{Source: source})
 	if err != nil {
 		return nil, err
 	}
-	res := &result{Repository: f.repository, Digest: img.Manifest.Digest.String(), Tags: tagsFor(f, info)}
+	res := &result{
+		Repository: f.repository,
+		Digest:     img.Manifest.Digest.String(),
+		Tags:       tagsFor(f, info),
+		Skipped:    append([]string{}, rendered.Skipped...),
+	}
 	if info != nil {
 		if err := img.AttachProvenance(ctx, provenance(info, source)); err != nil {
 			return nil, err
@@ -192,6 +198,19 @@ func buildAndPush(ctx context.Context, f *buildFlags, stdin io.Reader, stderr io
 		res.Reference = f.repository + "@" + res.Digest
 	}
 	return res, nil
+}
+
+// render reads the folder, and names each skipped file in a warning.
+func render(f *buildFlags, stderr io.Writer) (*settingsimage.Rendered, error) {
+	rendered, err := settingsimage.Render(os.DirFS(f.folder), settingsimage.RenderOptions{SensitiveKinds: f.sensitive})
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range rendered.Skipped {
+		_, _ = fmt.Fprintf(stderr, "warning: skipped %s: a known file beside resources/ and raw/, "+
+			"not part of the image\n", p)
+	}
+	return rendered, nil
 }
 
 // tagsFor is the tags in push order: sha-, the caller's, then the moving branch tag.

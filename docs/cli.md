@@ -57,8 +57,7 @@ The folder must be inside a Git work tree unless `--no-provenance` is set. The C
    Both commands look only at `resources/` and `raw/`, the parts that reach the image
    ([format-v2.md §2](format-v2.md#2-input-the-folder)). A known top-level file such as
    `.gittargetignore` or `README.md` is skipped, so editing it changes neither the digest nor the
-   commit, and an uncommitted edit to it does not make the folder dirty. _(Designed 2026-11-03, not
-   built yet: [plan.md](plan.md) step 2f. Until then both commands take the whole folder.)_
+   commit, and an uncommitted edit to it does not make the folder dirty.
 3. **Refuse a shallow clone** (`git rev-parse --is-shallow-repository` is `true`) unless
    `--allow-shallow`. In a depth-1 clone, `git log -- <folder>` returns HEAD for every folder,
    because the boundary commit appears to add everything. The answer would be wrong without any
@@ -138,7 +137,7 @@ Progress and warnings go to **stderr**. With `--json`, **stdout** carries exactl
 - `provenance` and `commit` are `null` when there are none.
 - `skipped` lists the files at the top of the folder that were left out
   ([format-v2.md §2](format-v2.md#2-input-the-folder)), each also named in a warning on stderr. It
-  is `[]` when there are none. _(Not built yet: [plan.md](plan.md) step 2f.)_
+  is `[]` when there are none.
 - `changed` is `false` when, before the push, the image already existed in the repository **and**
   every tag already pointed at it. That is the "nothing to do" case, and the Action reports it.
 - `build` gives the same object without `changed`, and with `repository` set to `--repository` if

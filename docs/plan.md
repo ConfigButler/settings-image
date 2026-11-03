@@ -137,8 +137,14 @@ from both registries has the expected files, modes, annotations and referrer.
    `raw/` ([cli.md §3](cli.md#3-git-where-provenance-and-the--tag-come-from)).
    - A refusal test becomes a skip test for each listed name; a test that an unlisted top-level
      file is still refused; a conformance case with a reverser-shaped folder.
-   - **Observe:** the case's digest equals the digest of the same folder without the skipped file;
-     an edit to that file alone gives `changed: false`; `task test-mount` mounts it.
+   - **Built and observed** (2026-11-03). Each listed name has a skip test that compares the digest
+     with the folder without it, and unlisted names (`menu.yaml`, `README.txt`, `README.MD`,
+     `docs/README.md`, `resource/…`) are still refused. The example
+     [examples/gitops-reverser/](../examples/gitops-reverser/) has a `.gittargetignore` and a
+     `README.md` beside `resources/`; `task test-mount` mounts it and sees only `configmaps/` and
+     `resources/`. Pushed from a scratch repository to the k3d registry, an uncommitted edit to the
+     README and then a commit of it each gave `changed: false`, the same digest and the same
+     commit; `crane export` lists no README. The conformance case waits for the corpus (2e).
 7. **2g, any registry** (designed 2026-11-03, [cli.md §4](cli.md#4-registry-credentials),
    [github-action.md §2](github-action.md#2-actionyml-at-the-repository-root)). Generic credential
    forms, nothing per registry:

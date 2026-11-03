@@ -65,9 +65,9 @@ relative to the folder.
   or `raw/` is never left out, and never guessed at. A refusal stops the build, and nothing is
   pushed.
 
-_Skipping the known top-level files was decided on 2026-11-03 and is not built yet
-([plan.md](plan.md), step 2f); until then the writer refuses them. It needs no new layout version:
-every folder accepted before gives the same tree and the same digest._
+_Skipping the known top-level files was added on 2026-11-03 ([plan.md](plan.md), step 2f). It
+needed no new layout version: every folder accepted before gives the same tree and the same
+digest. In the Go API, `Rendered.Skipped` lists them._
 
 The rules that protect the image itself (§8: links, escaping paths, size) apply everywhere, `raw/`
 included. They are about building a safe image, not about what a file means.

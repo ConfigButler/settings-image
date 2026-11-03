@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coffee-menu
+  namespace: coffee
+data:
+  menu.txt: |
+    espresso 2.20
+    flat white 3.40
+---
+apiVersion: shop.configbutler.ai/v1
+kind: CoffeeOrder
+metadata:
+  name: morning
+  namespace: coffee
+spec:
+  drink: flat white

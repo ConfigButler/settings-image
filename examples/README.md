@@ -14,6 +14,7 @@ A settings folder has two folders ([format-v2.md](../docs/format-v2.md)):
 | [configmap/](configmap/) | three ConfigMaps in one file: one with `binaryData`, one annotated to stay a resource only | `resources/app.yaml`, and each key as a plain file: `configmaps/shop-settings/settings.yaml`, `configmaps/branding/logo.png` (decoded). No `configmaps/feature-flags/` |
 | [custom-resources/](custom-resources/) | custom resources in YAML and JSON, a nested folder, a TOML file in `raw/` | everything byte for byte, at the same paths. No `configmaps/`: there is no ConfigMap |
 | [pictures/](pictures/) | product pictures (PNG) and a user's avatar (SVG) in `raw/`, referred to by path from custom resources | every file byte for byte: `raw/products/vanilla.png` |
+| [gitops-reverser/](gitops-reverser/) | a folder gitops-reverser writes into: its `.gittargetignore` marker and a `README.md` beside `resources/` | `resources/menu.yaml` and `configmaps/coffee-menu/menu.txt`. The two top-level files are skipped and named in the output |
 | [sops-secret/](sops-secret/) | a SOPS-encrypted `Secret`, next to a plain ConfigMap | the Secret under `resources/`, still encrypted; the ConfigMap's keys under `configmaps/database/` |
 
 ## Pictures and other files

@@ -47,7 +47,8 @@ REF_CRS="$(push examples/custom-resources examples/custom-resources)"
 REF_SOPS="$(push examples/sops-secret examples/sops-secret)"
 REF_PICTURES="$(push examples/pictures examples/pictures)"
 REF_EDGE="$(push edge-cases testdata/mount/edge-cases)"
-printf '  %s\n' "${REF_CONFIGMAP}" "${REF_CRS}" "${REF_SOPS}" "${REF_PICTURES}" "${REF_EDGE}"
+REF_REVERSER="$(push examples/gitops-reverser examples/gitops-reverser)"
+printf '  %s\n' "${REF_CONFIGMAP}" "${REF_CRS}" "${REF_SOPS}" "${REF_PICTURES}" "${REF_EDGE}" "${REF_REVERSER}"
 
 kubectl --context "${CONTEXT}" delete namespace "${NAMESPACE}" --ignore-not-found --wait >/dev/null
 kubectl --context "${CONTEXT}" create namespace "${NAMESPACE}" >/dev/null
@@ -75,6 +76,7 @@ spec:
         - { name: sops, mountPath: /settings/sops-secret, readOnly: true }
         - { name: pictures, mountPath: /settings/pictures, readOnly: true }
         - { name: edge, mountPath: /settings/edge-cases, readOnly: true }
+        - { name: reverser, mountPath: /settings/gitops-reverser, readOnly: true }
         # A ConfigMap's configmaps/ directory as a subPath: what a configMap volume gave before.
         - { name: configmap, mountPath: /etc/shop, subPath: configmaps/shop-settings, readOnly: true }
   volumes:
@@ -83,12 +85,13 @@ spec:
     - { name: sops, image: { reference: "${REF_SOPS}", pullPolicy: IfNotPresent } }
     - { name: pictures, image: { reference: "${REF_PICTURES}", pullPolicy: IfNotPresent } }
     - { name: edge, image: { reference: "${REF_EDGE}", pullPolicy: IfNotPresent } }
+    - { name: reverser, image: { reference: "${REF_REVERSER}", pullPolicy: IfNotPresent } }
 EOF
 if ! kc wait --for=condition=Ready pod/settings-mount --timeout=120s >/dev/null; then
     kc describe pod settings-mount >&2
     exit 1
 fi
-echo "Pod is Ready with five image volumes"
+echo "Pod is Ready with six image volumes"
 
 echo "examples/configmap"
 check "configmaps/ files through a subPath" same_bytes <(printf 'maxScoops: 3\ncurrency: EUR\n') /etc/shop/settings.yaml
@@ -129,6 +132,14 @@ for f in raw/products/vanilla.png raw/products/chocolate.png raw/products/strawb
 done
 check "a picture is where the resource says" bash -c "kubectl --context ${CONTEXT} -n ${NAMESPACE} exec \
     settings-mount -- test -s /settings/pictures/\$(sed -n 's/^  picture: //p' examples/pictures/resources/catalogue.yaml | head -1)"
+
+echo "examples/gitops-reverser"
+R=/settings/gitops-reverser
+check "resources/ byte for byte" same_bytes examples/gitops-reverser/resources/menu.yaml "${R}/resources/menu.yaml"
+check "the ConfigMap's configmaps/ file" same_bytes <(printf 'espresso 2.20\nflat white 3.40\n') \
+    "${R}/configmaps/coffee-menu/menu.txt"
+check "the skipped README.md and .gittargetignore are not in the image" bash -c "test \"\$(kubectl \
+    --context ${CONTEXT} -n ${NAMESPACE} exec settings-mount -- ls -A ${R})\" = \"\$(printf 'configmaps\\nresources')\""
 
 echo "edge cases"
 E=/settings/edge-cases

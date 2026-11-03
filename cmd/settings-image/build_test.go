@@ -124,7 +124,7 @@ func TestBuildFromGit(t *testing.T) {
 	if strings.Join(res.Tags, " ") != strings.Join(wantTags, " ") {
 		t.Errorf("tags %q, want %q", res.Tags, wantTags)
 	}
-	if res.Commit == nil || *res.Commit != head || res.Provenance == nil || res.Changed != nil {
+	if res.Commit == nil || *res.Commit != head || res.Provenance == nil || res.Changed != nil || res.Skipped == nil {
 		t.Errorf("%+v: want commit %s, a referrer, and no changed", res, head)
 	}
 
@@ -303,5 +303,44 @@ func TestBuildSensitiveKind(t *testing.T) {
 	code, _, stderr := cli(t, "build", r.shop(), "--sensitive-kind", "ConfigMap")
 	if code != exitRefused || !strings.Contains(stderr, "ConfigMap shop-settings is not SOPS-encrypted") {
 		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+// A folder gitops-reverser writes into: its marker and a README beside resources/. They are
+// skipped and named, and editing them changes nothing: not the digest, not the commit, and an
+// uncommitted edit does not make the folder dirty.
+func TestBuildSkipsKnownTopLevelFiles(t *testing.T) {
+	r := newRepo(t)
+	r.write("configs/shop/.gittargetignore", "")
+	r.write("configs/shop/README.md", "# shop\n")
+	head := r.commit("chore: reverser marker")
+	before := cliJSON(t, "build", r.shop())
+	if before.Digest != knownDigest {
+		t.Errorf("digest %s, want the known answer %s: skipped files must not reach the image",
+			before.Digest, knownDigest)
+	}
+	if strings.Join(before.Skipped, " ") != ".gittargetignore README.md" {
+		t.Errorf("skipped %q", before.Skipped)
+	}
+	if *before.Commit == head {
+		t.Errorf("commit %s is the one that only added skipped files", head)
+	}
+
+	r.write("configs/shop/README.md", "# shop, edited\n")
+	code, _, stderr := cli(t, "build", r.shop())
+	if code != exitOK || !strings.Contains(stderr, "warning: skipped README.md") {
+		t.Errorf("an uncommitted edit to a skipped file: exit %d, stderr %q", code, stderr)
+	}
+	r.commit("docs: edit the README")
+	after := cliJSON(t, "build", r.shop())
+	if after.Digest != before.Digest || *after.Commit != *before.Commit || *after.Provenance != *before.Provenance {
+		t.Errorf("after editing only a skipped file: %+v, want the same as %+v", after, before)
+	}
+
+	// A resource one level too high is still refused, committed or not.
+	r.write("configs/shop/menu.yaml", knownConfigMap)
+	code, _, stderr = cli(t, "build", r.shop())
+	if code != exitRefused || !strings.Contains(stderr, "refused menu.yaml") {
+		t.Errorf("menu.yaml beside resources/: exit %d, stderr %q", code, stderr)
 	}
 }

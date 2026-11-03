@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -22,6 +23,15 @@ const MaxInputSize = 10 << 20
 // to their bytes. It holds files only; directories are implied.
 type Tree map[string][]byte
 
+// Rendered is a folder read into a tree, and what was left out of it.
+type Rendered struct {
+	// Tree is what goes into the image.
+	Tree Tree
+	// Skipped are the known files at the top of the folder that were left out (format-v2.md §2),
+	// sorted. The writer names each one, so its author knows it is not in the image.
+	Skipped []string
+}
+
 // RenderOptions are the writer's choices for the tree.
 type RenderOptions struct {
 	// SensitiveKinds are kinds that must arrive SOPS-encrypted, as "group/Kind", or "Kind" for
@@ -30,7 +40,7 @@ type RenderOptions struct {
 }
 
 // Render reads the folder fsys (for a directory on disk, os.DirFS) into a tree, or refuses it.
-func Render(fsys fs.FS, opts RenderOptions) (Tree, error) {
+func Render(fsys fs.FS, opts RenderOptions) (*Rendered, error) {
 	in := input{}
 	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -49,6 +59,8 @@ func Render(fsys fs.FS, opts RenderOptions) (Tree, error) {
 			return refuse(p, "a symlink; an image volume must not reach outside its folder")
 		case !d.Type().IsRegular():
 			return refuse(p, "not a regular file")
+		case in.skip(p):
+			return nil
 		}
 		b, err := fs.ReadFile(fsys, p)
 		if err != nil {
@@ -65,7 +77,7 @@ func Render(fsys fs.FS, opts RenderOptions) (Tree, error) {
 // RenderArchive reads the folder at root inside a tar or tar+gzip archive (a Flux artifact is
 // one) into a tree, or refuses it. Entries outside root are ignored. root is slash-separated;
 // "" or "." is the whole archive.
-func RenderArchive(r io.Reader, root string, opts RenderOptions) (Tree, error) {
+func RenderArchive(r io.Reader, root string, opts RenderOptions) (*Rendered, error) {
 	br := bufio.NewReader(r)
 	r = br
 	if magic, _ := br.Peek(len(gzipMagic)); string(magic) == gzipMagic {
@@ -115,6 +127,9 @@ func (in *input) addEntry(tr *tar.Reader, hdr *tar.Header, root string) error {
 	case tar.TypeReg:
 	default:
 		return refuse(p, "not a regular file")
+	}
+	if in.skip(p) {
+		return nil
 	}
 	if hdr.Size > MaxInputSize-in.size {
 		return refuse(".", "more than %d bytes in total", MaxInputSize)
@@ -166,10 +181,34 @@ func hasGitComponent(p string) bool {
 	return false
 }
 
+// IsKnownTopLevelFile reports whether a file of this name, at the top of a settings folder, is
+// skipped rather than refused (format-v2.md §2). The list is closed: gitops-reverser's own list
+// of files it tolerates without managing them, plus its .gittargetignore. Any other file at the
+// top is refused.
+func IsKnownTopLevelFile(name string) bool {
+	switch name {
+	case ".gittargetignore", ".sops.yaml", ".gitignore", ".gitattributes", ".gitkeep", ".keep",
+		"LICENSE", "LICENSE.txt", "LICENCE", "LICENCE.txt", "COPYING", "COPYING.txt", "NOTICE", "NOTICE.txt":
+		return true
+	}
+	return strings.HasSuffix(name, ".md") || strings.HasSuffix(name, ".markdown")
+}
+
 // input is the folder as read: relative path to bytes.
 type input struct {
-	files map[string][]byte
-	size  int64
+	files   map[string][]byte
+	skipped []string
+	size    int64
+}
+
+// skip reports whether p is a known top-level file, and records it if so. A skipped file is never
+// read, and does not count towards the size limit or make the folder non-empty.
+func (in *input) skip(p string) bool {
+	if strings.Contains(p, "/") || !IsKnownTopLevelFile(p) {
+		return false
+	}
+	in.skipped = append(in.skipped, p)
+	return true
 }
 
 func (in *input) add(p string, b []byte) error {
@@ -187,16 +226,17 @@ func (in *input) add(p string, b []byte) error {
 	return nil
 }
 
-func (in *input) render(opts RenderOptions) (Tree, error) {
+func (in *input) render(opts RenderOptions) (*Rendered, error) {
 	if len(in.files) == 0 {
-		return nil, refuse(".", "the folder is empty; publishing it would roll every consumer to no settings")
+		return nil, refuse(".", "the folder is empty: no file under resources/ or raw/; "+
+			"publishing it would roll every consumer to no settings")
 	}
 	tree := Tree{}
 	for p, b := range in.files {
 		top, _, nested := strings.Cut(p, "/")
 		if !nested || (top != ResourcesDir && top != RawDir) {
 			return nil, refuse(p, "not under resources/ or raw/; put Kubernetes resources in resources/ "+
-				"and any other file in raw/")
+				"and any other file in raw/ (only a known file such as README.md may sit beside them)")
 		}
 		tree[p] = b
 	}
@@ -210,7 +250,8 @@ func (in *input) render(opts RenderOptions) (Tree, error) {
 	if err := checkNoFileIsADirectory(tree); err != nil {
 		return nil, err
 	}
-	return tree, nil
+	sort.Strings(in.skipped)
+	return &Rendered{Tree: tree, Skipped: in.skipped}, nil
 }
 
 // checkNoFileIsADirectory refuses a tree where one path is both a file and a parent of another:

@@ -24,7 +24,11 @@ func sopsFixture(t *testing.T, name string) string {
 }
 
 func renderOne(doc string, opts settingsimage.RenderOptions) (settingsimage.Tree, error) {
-	return settingsimage.Render(fstest.MapFS{"resources/s.yaml": file(doc)}, opts)
+	rendered, err := settingsimage.Render(fstest.MapFS{"resources/s.yaml": file(doc)}, opts)
+	if err != nil {
+		return nil, err
+	}
+	return rendered.Tree, nil
 }
 
 func TestSOPSRulesAdmitted(t *testing.T) {

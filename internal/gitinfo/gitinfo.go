@@ -48,16 +48,23 @@ func CheckWorkTree(ctx context.Context, folder string) error {
 	return nil
 }
 
-// Dirty reports whether the folder has uncommitted changes, untracked files included.
+// pathspecs are the parts of a settings folder that reach the image, relative to the folder
+// (docs/format-v2.md §2). A known top-level file such as README.md is skipped by the writer, so
+// Git ignores it too: editing it neither makes the folder dirty nor moves its commit.
+func pathspecs() []string { return []string{"resources", "raw"} }
+
+// Dirty reports whether resources/ or raw/ in the folder has uncommitted changes, untracked
+// files included.
 func Dirty(ctx context.Context, folder string) (bool, error) {
-	out, err := git(ctx, folder, "status", "--porcelain", "--", ".")
+	out, err := git(ctx, folder, append([]string{"status", "--porcelain", "--"}, pathspecs()...)...)
 	if err != nil {
 		return false, err
 	}
 	return out != "", nil
 }
 
-// Read returns the commit that last changed folder. The folder must be in a Git work tree.
+// Read returns the commit that last changed resources/ or raw/ in folder. The folder must be in a
+// Git work tree.
 func Read(ctx context.Context, folder string, opts Options) (*Info, error) {
 	if err := CheckWorkTree(ctx, folder); err != nil {
 		return nil, err
@@ -76,7 +83,7 @@ func Read(ctx context.Context, folder string, opts Options) (*Info, error) {
 		info.Shallow = true
 		logArgs = append(logArgs, "HEAD")
 	} else {
-		logArgs = append(logArgs, "--", ".")
+		logArgs = append(append(logArgs, "--"), pathspecs()...)
 	}
 
 	out, err := git(ctx, folder, logArgs...)

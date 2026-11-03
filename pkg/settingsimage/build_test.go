@@ -151,10 +151,11 @@ func TestDigestIsStable(t *testing.T) {
 	write(three, []string{a, m, b}, 0o644, content)
 
 	digest := func(dir string) string {
-		tree, err := settingsimage.Render(os.DirFS(dir), settingsimage.RenderOptions{})
+		rendered, err := settingsimage.Render(os.DirFS(dir), settingsimage.RenderOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
+		tree := rendered.Tree
 		img, err := settingsimage.Build(t.Context(), tree, settingsimage.BuildOptions{})
 		if err != nil {
 			t.Fatal(err)

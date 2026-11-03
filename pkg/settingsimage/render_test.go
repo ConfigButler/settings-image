@@ -47,6 +47,12 @@ func renderRefusals() []renderRefusal {
 			wantIn:   "empty",
 		},
 		{
+			name:     "only skipped files",
+			folder:   fstest.MapFS{"README.md": file("x"), ".gittargetignore": file("")},
+			wantPath: ".",
+			wantIn:   "empty",
+		},
+		{
 			name:     "a file at the top",
 			folder:   fstest.MapFS{"raw/a.txt": file("x"), "app.yaml": file(configMap("cm", ""))},
 			wantPath: "app.yaml",
@@ -231,10 +237,11 @@ func TestRenderTree(t *testing.T) {
 		"raw/sub/.git":          file("gitdir: ../.git/modules/sub\n"),
 		"resources/.git/x.toml": file("not checked"),
 	}
-	tree, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
+	rendered, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tree := rendered.Tree
 	assertTreePaths(t, tree, []string{
 		"configmaps/app/a.conf", "configmaps/app/logo.bin", "configmaps/other/b",
 		"raw/dup.yaml", "raw/list.yaml", "raw/notes.txt", "raw/secret.yaml",
@@ -246,12 +253,83 @@ func TestRenderTree(t *testing.T) {
 	assertEqual(t, "raw bytes", string(tree["raw/notes.txt"]), "not: [parsed\n")
 }
 
-// Only raw/: no resource, no configmaps/.
-func TestRenderRawOnly(t *testing.T) {
-	tree, err := settingsimage.Render(fstest.MapFS{"raw/settings.toml": file("a = 1\n")}, settingsimage.RenderOptions{})
+// knownTopLevelFiles is format-v2.md §2's closed list, with a name for each pattern.
+func knownTopLevelFiles() []string {
+	return []string{
+		".gittargetignore", ".sops.yaml", ".gitignore", ".gitattributes", ".gitkeep", ".keep",
+		"README.md", "CHANGES.markdown", ".md",
+		"LICENSE", "LICENSE.txt", "LICENCE", "LICENCE.txt", "COPYING", "COPYING.txt", "NOTICE", "NOTICE.txt",
+	}
+}
+
+// A known file at the top is skipped and named, and changes nothing about the image.
+func TestRenderSkipsKnownTopLevelFiles(t *testing.T) {
+	base := fstest.MapFS{"resources/configmap.yaml": file(configMapYAML)}
+	want := digestOf(t, base)
+	for _, name := range knownTopLevelFiles() {
+		t.Run(name, func(t *testing.T) {
+			folder := maps.Clone(base)
+			folder[name] = file("kind: Secret\nnot: [yaml\n") // never read
+			rendered, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(rendered.Skipped, []string{name}) {
+				t.Errorf("skipped %q, want [%q]", rendered.Skipped, name)
+			}
+			assertEqual(t, "digest", digestOf(t, folder), want)
+		})
+	}
+
+	rendered, err := settingsimage.Render(fstest.MapFS{
+		"raw/a.txt": file("a"), "README.md": file("x"), ".gittargetignore": file(""), "LICENSE": file("x"),
+	}, settingsimage.RenderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if want := []string{".gittargetignore", "LICENSE", "README.md"}; !slices.Equal(rendered.Skipped, want) {
+		t.Errorf("skipped %q, want %q (sorted)", rendered.Skipped, want)
+	}
+}
+
+// Anything at the top that is not on the closed list is still refused: a resource one level too
+// high must stop the build, not publish an image without it.
+func TestRenderRefusesUnknownTopLevelFiles(t *testing.T) {
+	for _, p := range []string{
+		"menu.yaml", "README.txt", "README.MD", "readme.rst", "LICENSE.md.bak", "license", ".env",
+		"docs/README.md", "resource/menu.yaml", ".github/CODEOWNERS", "raw.txt",
+	} {
+		t.Run(p, func(t *testing.T) {
+			folder := fstest.MapFS{"resources/configmap.yaml": file(configMapYAML), p: file("x")}
+			_, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
+			assertRefused(t, err, p, "not under resources/ or raw/")
+		})
+	}
+}
+
+func digestOf(t *testing.T, folder fstest.MapFS) string {
+	t.Helper()
+	rendered, err := settingsimage.Render(folder, settingsimage.RenderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := settingsimage.Build(t.Context(), rendered.Tree, settingsimage.BuildOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return img.Manifest.Digest.String()
+}
+
+// Only raw/: no resource, no configmaps/.
+func TestRenderRawOnly(t *testing.T) {
+	rendered, err := settingsimage.Render(
+		fstest.MapFS{"raw/settings.toml": file("a = 1\n")},
+		settingsimage.RenderOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := rendered.Tree
 	assertTreePaths(t, tree, []string{"raw/settings.toml"})
 }
 
@@ -271,26 +349,33 @@ func TestRenderArchiveMatchesDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	fromDir, err := settingsimage.Render(os.DirFS(dir), settingsimage.RenderOptions{})
+	fromDirRendered, err := settingsimage.Render(os.DirFS(dir), settingsimage.RenderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	fromDir := fromDirRendered.Tree
 
 	archive := tarball(t, true, []tarEntry{
 		{name: "./outside.yaml", body: "kind: Secret\n"}, // outside the root: ignored
 		{name: "./configs/shop/raw/sub/dir/notes.txt", body: "plain text\n", mode: 0o755},
 		{name: "./configs/shop/", dir: true},
 		{name: "./configs/shop/.git/config", body: "x"},
+		{name: "./configs/shop/README.md", body: "skipped"},
+		{name: "./README.md", body: "outside the root"},
 		{name: "configs/shop/resources/configmap.yaml", body: configMapYAML, mode: 0o600},
 		{name: "./configs/shopping/x.txt", body: "a sibling with a common prefix"},
 	})
-	fromArchive, err := settingsimage.RenderArchive(
+	fromArchiveRendered, err := settingsimage.RenderArchive(
 		bytes.NewReader(archive),
 		"configs/shop",
 		settingsimage.RenderOptions{},
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	fromArchive := fromArchiveRendered.Tree
+	if !slices.Equal(fromArchiveRendered.Skipped, []string{"README.md"}) {
+		t.Errorf("archive skipped %q, want [README.md]", fromArchiveRendered.Skipped)
 	}
 	if !maps.EqualFunc(fromDir, fromArchive, bytes.Equal) {
 		t.Fatalf("trees differ:\n dir     %q\n archive %q", keys(fromDir), keys(fromArchive))

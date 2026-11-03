@@ -101,10 +101,11 @@ func knownAnswers() []knownAnswer {
 func TestKnownAnswers(t *testing.T) {
 	for _, ka := range knownAnswers() {
 		t.Run(ka.name, func(t *testing.T) {
-			tree, err := settingsimage.Render(ka.folder, settingsimage.RenderOptions{})
+			rendered, err := settingsimage.Render(ka.folder, settingsimage.RenderOptions{})
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
+			tree := rendered.Tree
 			assertTreePaths(t, tree, ka.wantTree)
 
 			img, err := settingsimage.Build(t.Context(), tree, settingsimage.BuildOptions{Source: knownSource})
