@@ -37,6 +37,8 @@ settings-image version
 | `--plain-http` | | yes | for a local registry without TLS |
 | `--username`, `--password-stdin` | | yes | registry credentials (§4) |
 | `--registry-token-stdin` | | yes | a bearer token for the registry, sent unchanged (§4). Not built yet: [plan.md](plan.md) step 2g |
+| `--timestamp-tag <branch>` | yes | yes | add `<branch>-<unix committedAt>-<sha7>`, a tag that never moves and sorts by commit time ([format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order)); what Flux follows ([flux.md](flux.md)). Not built yet: step 2h |
+| `--provenance-author none\|name\|full` | yes | yes | how much of the commit author goes into provenance ([format-v2.md §9](format-v2.md#9-provenance-a-referrer-not-part-of-the-image)); default `none`. Not built yet: step 2i |
 | `--json` | yes | yes | print the result as JSON on stdout (§5) |
 
 ## 3. Git: where provenance and the `sha-` tag come from
@@ -53,7 +55,7 @@ The folder must be inside a Git work tree unless `--no-provenance` is set. The C
    complete no-op: the same digest, the same referrer and the same `sha-` tag.
 
    Both commands look only at `resources/` and `raw/`, the parts that reach the image
-   ([format-v2.md §2](format-v2.md#2-input-the-folder)). A top-level file such as
+   ([format-v2.md §2](format-v2.md#2-input-the-folder)). A known top-level file such as
    `.gittargetignore` or `README.md` is skipped, so editing it changes neither the digest nor the
    commit, and an uncommitted edit to it does not make the folder dirty. _(Designed 2026-11-03, not
    built yet: [plan.md](plan.md) step 2f. Until then both commands take the whole folder.)_
@@ -97,8 +99,18 @@ A run uses one credential. A registry token together with `--username` or `--pas
 their variables) is a usage error (exit 2), never a guess. In the Go API the token is
 `RepositoryOptions.RegistryToken`.
 
-A registry token is sent only when the registry answers with a `Bearer` challenge. When it asks for
-`Basic`, the push fails with an error saying that this registry wants a username and a password.
+**A registry token is sent as `Authorization: Bearer <token>` on every request to the registry's
+own host, from the first request on**, whatever challenge the registry would answer with. That is
+what `crane` does: go-containerregistry sends a registry token as Bearer even to a `Basic`
+challenge. oras-go alone sends a token only to a `Bearer` challenge, so the CLI sets the header
+itself, in a transport that knows the registry host.
+
+**Never to another host.** A blob request may be redirected to storage (S3, a CDN); the token stops
+at the registry. The transport compares the request's host and port with the registry's, and sends
+nothing to any other.
+
+A registry that refuses the credential (HTTP 401 or 403) exits 4 (§6), naming the registry and
+never the credential.
 
 _The registry token (`--registry-token-stdin`, `SETTINGS_IMAGE_REGISTRY_TOKEN`, `RegistryToken`) is
 designed (2026-11-03), not built yet: [plan.md](plan.md) step 2g._
@@ -142,6 +154,7 @@ Without `--json`, stdout carries only the `reference`, so `ref=$(settings-image 
 | 1 | an error that a retry might fix: network, registry, Git |
 | 2 | usage: unknown command or flag, missing argument |
 | 3 | **refused**: the folder breaks a rule of [format-v2.md §8](format-v2.md#8-refusals), or a tag is invalid, or the folder is dirty, outside Git (without `--no-provenance`), or the clone shallow. Retrying cannot help; the message names the path |
+| 4 | **the registry refused the credential** (HTTP 401 or 403): a wrong or expired token, a missing trust rule, no push permission. Retrying cannot help; the message names the registry. _(Designed 2026-11-03, not built yet: [plan.md](plan.md) step 2g; until then this is exit 1)_ |
 
 ## 7. Not in the CLI
 

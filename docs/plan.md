@@ -125,33 +125,73 @@ from both registries has the expected files, modes, annotations and referrer.
    A Go test rebuilds every case and fails on any byte of drift. Readers in other languages test
    against this directory at a release tag.
    - **Observe:** the test passes, and fails when one input byte is changed.
-6. **2f, top-level files are skipped, not refused** (designed 2026-11-03,
+6. **2f, known top-level files are skipped, not refused** (designed 2026-11-03,
    [format-v2.md §2](format-v2.md#2-input-the-folder)). Only `resources/` and `raw/` reach the
-   image; a file beside them is skipped and named (a warning, `skipped` in the JSON); any other
-   top-level directory is still refused, so a typo like `resource/` cannot publish an empty image.
-   The dirty check and the last-changed commit look only at `resources/` and `raw/`
-   ([cli.md §3](cli.md#3-git-where-provenance-and-the--tag-come-from)). This is what lets
-   gitops-reverser write `coffee/resources` and keep its `.gittargetignore` in `coffee/`.
-   - A refusal test becomes a skip test; a new conformance case holds a reverser-shaped folder.
-   - **Observe:** the case's digest equals the digest of the same folder without the top-level
-     file; an edit to that file alone gives `changed: false`; `task test-mount` mounts it.
+   image. A file beside them is skipped and named (a warning, `skipped` in the JSON) **only if it
+   is on a closed list**: `.gittargetignore`, `.sops.yaml`, `.gitignore`, `.gitattributes`,
+   `.gitkeep`, `.keep`, `*.md`, `*.markdown`, and `LICENSE`, `LICENCE`, `COPYING`, `NOTICE` (each
+   also with `.txt`). That is gitops-reverser's own list of files it tolerates without managing them, plus its
+   `.gittargetignore`. Any other top-level file or directory is still refused: a resource written
+   one level too high (`coffee/menu.yaml` beside `resources/`) must stop the build, not publish an
+   image without it. The dirty check and the last-changed commit look only at `resources/` and
+   `raw/` ([cli.md §3](cli.md#3-git-where-provenance-and-the--tag-come-from)).
+   - A refusal test becomes a skip test for each listed name; a test that an unlisted top-level
+     file is still refused; a conformance case with a reverser-shaped folder.
+   - **Observe:** the case's digest equals the digest of the same folder without the skipped file;
+     an edit to that file alone gives `changed: false`; `task test-mount` mounts it.
 7. **2g, any registry** (designed 2026-11-03, [cli.md §4](cli.md#4-registry-credentials),
    [github-action.md §2](github-action.md#2-actionyml-at-the-repository-root)). Generic credential
-   forms, nothing per registry: `--registry-token-stdin` (a bearer token sent unchanged), the
-   Action's `registry-token` and `oidc-audience` inputs, and `github.token` sent to ghcr.io only.
-   - The first user is k8s-trail pushing to zot with its GitHub OIDC token. zot's bearer login has
-     never been run; k8s-trail's plan starts with a spike (its P0) that needs no release here: the
-     token written to the Docker config's `registrytoken` field, and `password: ''`. That spike
-     also shows whether zot answers with a `Bearer` challenge, which a registry token needs.
-   - **Observe:** a push to a local zot with a bearer token, read back with `crane`; a `Basic`
-     challenge gives the documented error; a workflow without `id-token: write` fails with its
-     message; a push to a non-ghcr.io registry sends no `GITHUB_TOKEN` (a test registry that logs
-     the `Authorization` header).
+   forms, nothing per registry:
+   - `--registry-token-stdin`, and the Action's `registry-token` and `oidc-audience` inputs. **A
+     registry token is sent as `Authorization: Bearer` on every request to the registry's own host,
+     from the first request on, whatever challenge the registry would answer with**, and never to
+     any other host: a blob request may be redirected to storage, and the token must not follow.
+     This is what `crane` does (go-containerregistry sends a registry token as Bearer even to a
+     `Basic` challenge); oras-go alone only sends a token to a `Bearer` challenge, so the CLI adds
+     the header itself, in a transport scoped to the registry host.
+   - `oidc-audience` fetches the token in the push step, after the Go build, right before the
+     push: the token lives minutes. The documented convention is **the registry host as the
+     audience** (as Flux's RFC-0014 defaults it).
+   - `github.token` is sent to ghcr.io only.
+   - **A refused credential exits 4**, not 1: a 401 or 403 never fixes itself on a retry, so a
+     person and the Action can tell misconfiguration from a network blip.
+   - The Action gains the outputs `commit` and `skipped`.
+   - **Observe:** a push to a local zot that has both a password file and bearer (OIDC) login on,
+     with a bearer token, read back with `crane`; the token is not sent after a redirect to another
+     host (a test registry that redirects blobs and logs headers); a wrong token exits 4; a
+     workflow without `id-token: write` fails with its message; a push to a non-ghcr.io registry
+     sends no `GITHUB_TOKEN`.
+8. **2h, a sortable tag, and Flux image automation** (designed 2026-11-03,
+   [format-v2.md §10](format-v2.md#10-tags-and-pushing-in-order), [flux.md](flux.md)).
+   `--timestamp-tag <branch>` (Action input `timestamp-tag`) adds
+   `<branch>-<unix committedAt>-<sha7>`, from the commit that last changed the folder, so it is as
+   reproducible as the `sha-` tag and never moves. Flux's `ImagePolicy` picks the highest with
+   `numerical`.
+   - Why: re-running an old workflow run ("Re-run jobs") rebuilds the old commit and moves the
+     branch tag **back** to its digest; anything following the branch tag silently rolls back. The
+     `concurrency` group orders new runs, not re-runs. With the timestamp tag, a re-run only
+     re-pushes a tag that already exists, and the highest still wins.
+   - Not now: a guard that refuses to move the branch tag to a commit that is not a descendant of
+     the current one. It needs the current tag's provenance read back, and must handle reverts and
+     force-pushes.
+   - **Observe** in a k3d cluster with Flux: two commits give two timestamp tags; Flux's image
+     automation commits the newer digest into the Deployment and the pod mounts it; re-running the
+     older workflow run changes nothing in the cluster or in Git.
+   - When observed: README gains a "Roll out with Flux" section, pointing to [flux.md](flux.md).
+9. **2i, provenance names no author by default** (designed 2026-11-03,
+   [format-v2.md §9](format-v2.md#9-provenance-a-referrer-not-part-of-the-image)). A referrer is
+   public wherever the image is, so it must not copy a commit author's email out of a repository,
+   least of all a private one. `--provenance-author none|name|full` (Action `provenance-author`),
+   default `none`. It changes the referrer's bytes only, never the image digest.
+   - Recompute the referrer known answer (§11) for the default; keep the `full` one as a second
+     case.
+   - **Observe:** a pushed referrer, read with `oras discover` and `oras pull`, has no `author`
+     by default, `{"name": …}` with `name`, and both fields with `full`.
 
 **Done when** a workflow in another repository uses `ConfigButler/settings-image@v0` and an image
-appears on a registry (ghcr.io, or k8s-trail's zot) for each commit that touches its folder. The first one is planned in
-`ConfigButler/k8s-trail` (`configs/card-reveal`). That repository's maintainer adds that workflow,
-not this repository. Measure the commit-to-image time; expect 30–60 s, mostly runner start-up.
+appears on a registry for each commit that touches its folder. That repository's maintainer adds
+that workflow, not this repository. Measure the commit-to-image time; expect 30–60 s, mostly
+runner start-up.
 
 ## Phase 3: the controller (outline)
 

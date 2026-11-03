@@ -56,8 +56,8 @@ jobs:
       - uses: ConfigButler/settings-image@v0
         with:
           path: coffee # coffee/resources and coffee/raw
-          repository: zot.example.com/k8s-trail/coffee
-          oidc-audience: zot.example.com
+          repository: zot.example.com/acme/shop-settings
+          oidc-audience: zot.example.com # the registry host: the convention
 ```
 
 A registry with its own login action (ECR, ACR, Artifact Registry) runs that action first; the
@@ -79,10 +79,12 @@ The root is where the Marketplace requires it, and it lets a workflow say
 | `tags` | `''` | one `--tag` per line |
 | `sensitive-kinds` | `''` | one `--sensitive-kind` per line |
 | `provenance` | `'true'` | `--no-provenance` when `'false'` |
+| `provenance-author` | `none` | `--provenance-author`: `none`, `name` or `full` |
+| `timestamp-tag` | `''` | `--timestamp-tag`, e.g. `${{ github.ref_name }}`: a sortable tag for Flux ([flux.md](flux.md)) |
 | `username` | `${{ github.actor }}` | `SETTINGS_IMAGE_USERNAME`, only together with a password |
 | `password` | `''` | `SETTINGS_IMAGE_PASSWORD`. When no credential input is set and `repository` is on `ghcr.io`, the Action uses `${{ github.token }}`. Otherwise, with no credential set, the Docker config applies, as `docker/login-action` left it |
 | `registry-token` | `''` | `SETTINGS_IMAGE_REGISTRY_TOKEN`: a bearer token sent unchanged |
-| `oidc-audience` | `''` | the Action requests the workflow's GitHub OIDC token for this audience, masks it, and passes it as the registry token. Needs `permissions: id-token: write`; without it the step fails and says so |
+| `oidc-audience` | `''` | the Action requests the workflow's GitHub OIDC token for this audience, masks it, and passes it as the registry token. **Use the registry host** (`zot.example.com`), as Flux's RFC-0014 defaults it. The token is requested in the push step, after the Go build, right before the push: it lives minutes. Needs `permissions: id-token: write`; without it the step fails and says so |
 | `plain-http` | `'false'` | `--plain-http` when `'true'` (a service-container registry) |
 
 At most one of `password`, `registry-token` and `oidc-audience` may be set; two is an error.
@@ -92,11 +94,13 @@ every registry, so a workflow pushing elsewhere handed the repository's token to
 token is a secret of the place that issued it. With the new default nothing changes on ghcr.io, and
 `password: ''` (the old way to choose the Docker config) still means the same.
 
-_`registry-token`, `oidc-audience` and the ghcr.io-only default were designed on 2026-11-03 and are
-not built yet ([plan.md](plan.md), step 2g)._
+_`registry-token`, `oidc-audience`, the ghcr.io-only default and the `commit` and `skipped`
+outputs were designed on 2026-11-03 and are not built yet ([plan.md](plan.md), step 2g);
+`timestamp-tag` is step 2h and `provenance-author` step 2i._
 
-**Outputs:** `digest`, `reference`, `tags` (comma-separated) and `changed`, read from the CLI's
-`--json` with `jq`, which is on every hosted runner.
+**Outputs:** `digest`, `reference`, `tags` (comma-separated), `changed`, `commit` (empty without
+provenance) and `skipped` (comma-separated), read from the CLI's `--json` with `jq`, which is on
+every hosted runner.
 
 **`runs: using: composite`.** Every input reaches the script through `env:`, **never** through
 `${{ }}` inside `run:`. A branch name or path is then data, not shell. (That is the usual injection

@@ -49,16 +49,23 @@ relative to the folder.
 - **Included:** every regular file under `resources/` or `raw/`, at any depth. Either may be
   absent.
 - **Skipped:** directories (they are implied by the files), any path with a component named
-  `.git`, and **every file at the top of the folder**, beside `resources/` and `raw/`. A tool
-  that writes `resources/` keeps its own files there (gitops-reverser's `.gittargetignore`), and
-  so can a `README.md` or a `.sops.yaml`. A skipped file is named in the writer's output (a warning,
-  and `skipped` in the CLI's JSON), so it is never left out silently.
-- **Refused:** any other directory at the top of the folder, and everything else in §8. A typo
-  such as `resource/` must stop the build, not publish an image without its resources. A file
-  under `resources/` or `raw/` is never left out, and never guessed at. A refusal stops the
-  build, and nothing is pushed.
+  `.git`, and **a known file at the top of the folder**, beside `resources/` and `raw/`. The list
+  is closed:
+  - `.gittargetignore`, `.sops.yaml`, `.gitignore`, `.gitattributes`, `.gitkeep`, `.keep`;
+  - a name ending in `.md` or `.markdown`;
+  - `LICENSE`, `LICENCE`, `COPYING`, `NOTICE`, each also with `.txt`.
 
-_Skipping top-level files was decided on 2026-11-03 and is not built yet
+  It is gitops-reverser's own list of files it tolerates without managing them, plus its
+  `.gittargetignore`, so a folder the reverser writes into as `resources/` can keep its marker
+  and README beside it. A skipped file is named in the writer's output (a warning, and `skipped`
+  in the CLI's JSON).
+- **Refused:** any other file or directory at the top of the folder, and everything else in §8. A
+  resource written one level too high (`menu.yaml` beside `resources/`) or a typo such as
+  `resource/` must stop the build, not publish an image without them. A file under `resources/`
+  or `raw/` is never left out, and never guessed at. A refusal stops the build, and nothing is
+  pushed.
+
+_Skipping the known top-level files was decided on 2026-11-03 and is not built yet
 ([plan.md](plan.md), step 2f); until then the writer refuses them. It needs no new layout version:
 every folder accepted before gives the same tree and the same digest._
 
@@ -259,12 +266,12 @@ offending path and a reason.
 
 | Input | Why |
 |---|---|
-| a file in a top-level directory other than `resources/` and `raw/` | say what it is: a resource, or a raw file. A misspelt `resource/` must not publish an image without its resources (top-level _files_ are skipped, §2) |
+| a file outside `resources/` and `raw/`, unless it is a known top-level file (§2) | say what it is: a resource, or a raw file. A resource one level too high, or a misspelt `resource/`, must not publish an image without it |
 | a symlink or hard link | an image volume must not reach outside its folder |
 | any other non-regular file | not settings |
 | a path that escapes the folder or archive (`..`, absolute) | not settings |
 | more than **10 MiB** in total, uncompressed, summed over the input files | settings are small; a large tree is something else |
-| an **empty** folder: no file under `resources/` or `raw/` (top-level files alone do not count) | publishing it would roll every consumer to "no settings" |
+| an **empty** folder: no file under `resources/` or `raw/` (skipped top-level files do not count) | publishing it would roll every consumer to "no settings" |
 | two archive entries for one path, or a path that is both a file and a directory | not a folder |
 
 **Under `resources/`:** a file that is not `.yaml`, `.yml` or `.json`, or does not parse; every
@@ -289,7 +296,7 @@ Per-commit facts live in an OCI referrer whose `subject` is the image manifest:
 | `path` | the folder, relative to the repository root |
 | `commit` | full SHA of the commit that **last changed the folder**, not HEAD |
 | `ref` | the ref it was built from, e.g. `refs/heads/main` |
-| `author` | `{"email": …, "name": …}` of that commit |
+| `author` | that commit's author, **only when asked for**: `{"name": …}` with `--provenance-author name`, `{"email": …, "name": …}` with `full`. The default, `none`, omits the field. A referrer is public wherever the image is, and must not copy an email out of a repository, least of all a private one. _(Designed 2026-11-03, not built yet: [plan.md](plan.md) step 2i; until then it is always written in full.)_ |
 | `subject` | that commit's subject line |
 | `committedAt` | that commit's committer date, RFC 3339, UTC |
 
@@ -314,11 +321,23 @@ then fails the whole push, although the new index was already written.
 - A **branch tag**: the branch name lowercased, every character outside `[a-z0-9_.-]` replaced by
   `-`, leading `.` and `-` removed, at most 128 characters, and `branch` if nothing is left. So
   `feature/Card` becomes `feature-card`.
+- A **timestamp tag**, only when asked for (`--timestamp-tag <branch>`):
+  `<branch>-<committedAt as Unix seconds>-<first 7 of the commit>`, for the commit that last
+  changed the folder, e.g. `main-1762115267-0123456`. The branch is sanitised as for the branch
+  tag, and cut to 109 characters so the tag stays within 128. It is as reproducible as the `sha-`
+  tag and never moves, and its number sorts: Flux's `ImagePolicy` follows it with `numerical`
+  ([flux.md](flux.md)). It needs Git, so it is refused with `--no-provenance` or `--allow-dirty`.
+  _(Designed 2026-11-03, not built yet: [plan.md](plan.md) step 2h.)_
 - Any tag the caller names, which must already be a valid OCI tag
   (`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$`). The writer refuses an invalid one rather than rewrite it.
 
-Push order: the image, then its provenance referrer, then the tags, **moving tags last**. Whoever
-follows a moving tag (Flux's `ImagePolicy`) then never sees a digest without its provenance.
+Push order: the image, then its provenance referrer, then the tags, **moving tags last** (the
+`sha-` and timestamp tags before the branch tag). Whoever follows a tag then never sees a digest
+without its provenance.
+
+**A moving tag can move backwards.** Re-running an old workflow run rebuilds the old commit, and
+the branch tag goes back to that commit's digest. A consumer that must only ever move forward
+follows the timestamp tag, where the highest wins and a re-run only re-pushes a tag that exists.
 Every step is idempotent: an existing blob is skipped, and a tag is overwritten with the same value.
 
 **Consumers mount by digest, never by tag.** An image volume is resolved at each _container_
@@ -359,9 +378,10 @@ The manifest's exact bytes:
 {"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:2880ab7eaf378f9129049468d3e8c515eb108720d64169c35f297c35ef675169","size":151},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","digest":"sha256:8a76316fa9647d30e23e8b1d2cd2004d426a13136a2df028766efd609fa61705","size":257}],"annotations":{"ai.configbutler.settings-image.layout":"v2","org.opencontainers.image.created":"1970-01-01T00:00:00Z","org.opencontainers.image.source":"https://github.com/ConfigButler/k8s-trail"}}
 ```
 
-Its provenance, for commit `0123456789abcdef0123456789abcdef01234567` on `refs/heads/main` by
-`Ada <ada@example.com>`, subject `feat: three scoops`, committed `2026-11-02T20:41:07Z`, with
-`path: configs/shop`:
+Its provenance with `--provenance-author full`, for commit
+`0123456789abcdef0123456789abcdef01234567` on `refs/heads/main` by `Ada <ada@example.com>`,
+subject `feat: three scoops`, committed `2026-11-02T20:41:07Z`, with `path: configs/shop` (step
+2i adds the default, `none`, as a second case):
 
 | | Value |
 |---|---|
