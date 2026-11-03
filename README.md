@@ -114,8 +114,8 @@ Secret. `docker rm -f registry` cleans up.
 settings-image is a **settings publisher**, not a general folder-to-image tool. It knows
 Kubernetes objects: it checks what is in `resources/`, turns ConfigMaps into files, insists that a
 Secret is encrypted, and refuses a folder that looks wrong (more than 10 MiB, an unknown file
-beside the two folders). For an arbitrary pile of files, a `FROM scratch` Dockerfile is the
-simpler tool; a folder with only `raw/` skips every Kubernetes check.
+beside the two folders). For files that are not Kubernetes objects at all, put them in `raw/`
+only: every Kubernetes check is skipped, and you keep the stable digest and readable files.
 
 **Kubernetes is not required to read the result.** It is a plain OCI image, so anything that pulls
 images can get the files out. With the `reference` from above:
@@ -231,17 +231,35 @@ used, as `docker login` left it. All flags, the `--json` output and the exit cod
 Exit codes: 0 done, 1 a retry may help (network, registry), 2 usage, 3 refused, 4 credential
 refused.
 
-## Why a tool, and not `docker build` or `oras push`
+## How does this compare to …
 
-Because the volume has to be a **real image**: an image config whose `rootfs.diff_ids` lists its
-layers, so the container runtime can unpack it.
+settings-image is the first tool built for image volumes: one command gives a settings image
+that **mounts**, has **the same digest for the same files** on any machine, is **readable by a
+non-root pod**, and is **checked and traceable**. Every row below was measured on the same folder
+by [compare/](compare/README.md) (`task compare` repeats it):
 
-- A plain `oras push` is refused when the kubelet pulls it.
-- A Flux artifact (`flux push artifact`) mounts as an **empty directory, with no error**.
-- A `FROM scratch` Dockerfile does give an image, but a new digest on every build, no checks and no
-  provenance.
+| | Mounts as an image volume | Same files, same digest | A non-root pod can read it | Checks the settings | Provenance |
+|---|---|---|---|---|---|
+| **settings-image** | **yes** | **yes, always** | **yes, always** | **yes** | **yes**: a referrer and a `sha-` tag |
+| `docker build`, `FROM scratch` | yes | no: a new digest every build | only if the checkout's umask allowed it | no | no |
+| `docker buildx`, tuned to be reproducible | yes | with five settings right | with a symbolic `COPY --chmod` | no | no |
+| `crane append` | yes | with six `tar` flags right | depends on the tarball | no | no |
+| `imgpkg push` | yes | yes | no: files `0600`, directories `0700` | no | no |
+| `oras push` | **no**: the pull is refused | no | n/a | no | no |
+| `flux push artifact` | **no**: mounts an **empty directory**, with no error | with `--reproducible` | n/a | no | annotations only |
 
-The full comparison, with what was measured: [docs/alternatives.md](docs/alternatives.md).
+What the columns mean:
+
+- **Mounts**: the volume has to be a real image, with an image config whose `rootfs.diff_ids`
+  lists its layers. ORAS and Flux make artifacts, which the runtime cannot unpack.
+- **Same digest**: the digest is the settings' identity. Stable digests make an image checkable
+  against its commit, survive a lost registry, and mean a commit that changes nothing rolls nothing.
+- **Non-root**: most pods run as non-root, and the `restricted` Pod Security Standard requires it.
+  A file that is `0600` in the image is `Permission denied` in the pod.
+- **Checks**: a Secret must be SOPS-encrypted, ConfigMaps become files, a stray file is refused.
+
+Why images and not artifacts, and every other way settings reach a pod:
+[docs/alternatives.md](docs/alternatives.md).
 
 ## Docs
 

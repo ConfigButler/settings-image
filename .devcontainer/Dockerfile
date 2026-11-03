@@ -242,6 +242,29 @@ ENV DLV_VERSION=v1.27.2 \
     CLAUDE_CODE_VERSION=2.1.309 \
     DISABLE_AUTOUPDATER=1
 
+# The other folder-to-registry tools, for `task compare` (compare/run.sh): never used by CI.
+# Flux stays on the line the results in compare/README.md were measured with.
+# IMGPKG_VERSION -> https://github.com/carvel-dev/imgpkg/releases
+# FLUX_VERSION -> https://github.com/fluxcd/flux2/releases
+ENV IMGPKG_VERSION=v0.49.0 \
+    FLUX_VERSION=2.9.6
+
+RUN tmpdir="$(mktemp -d)" && cd "${tmpdir}" \
+    && asset="imgpkg-linux-amd64" \
+    && base="https://github.com/carvel-dev/imgpkg/releases/download/${IMGPKG_VERSION}" \
+    && curl -fsSL "${base}/${asset}" -o "${asset}" \
+    && curl -fsSL "${base}/checksums.txt" -o imgpkg-checksums.txt \
+    && grep "  ${asset}$" imgpkg-checksums.txt | sha256sum -c - \
+    && install -m 0755 "${asset}" /usr/local/bin/imgpkg \
+    && asset="flux_${FLUX_VERSION}_linux_amd64.tar.gz" \
+    && base="https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}" \
+    && curl -fsSL "${base}/${asset}" -o "${asset}" \
+    && curl -fsSL "${base}/flux_${FLUX_VERSION}_checksums.txt" -o flux-checksums.txt \
+    && grep "  ${asset}$" flux-checksums.txt | sha256sum -c - \
+    && tar -xzf "${asset}" flux \
+    && install -m 0755 flux /usr/local/bin/flux \
+    && cd / && rm -rf "${tmpdir}"
+
 RUN apt-get update \
     && apt-get -y install --no-install-recommends bash-completion \
     && apt-get autoremove -y \

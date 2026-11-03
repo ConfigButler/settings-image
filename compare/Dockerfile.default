@@ -1,0 +1,6 @@
+# The Dockerfile most image-volume guides show: copy the settings into an empty image.
+# It mounts, but `docker build` gives a new digest on every clean build, and the files keep
+# whatever permissions the builder's checkout had.
+FROM scratch
+COPY resources /resources
+COPY raw /raw

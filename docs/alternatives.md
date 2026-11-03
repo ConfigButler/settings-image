@@ -34,6 +34,11 @@ On containerd (k3s 1.36), referenced by digest:
 | `docker build` with `FROM scratch` and `COPY` | image | should mount (**not tested**). Not reproducible by default: timestamps and build metadata change the digest on every build. BuildKit can do better with `SOURCE_DATE_EPOCH` and `rewrite-timestamp=true` |
 | `oras push --config <a real image config>` with a hand-made tar layer | image, assembled by hand | could mount (**not tested**). You would compute the `diff_id` yourself, and ORAS's directory push wraps files in a top-level folder |
 
+[compare/](../compare/README.md) repeats this for every tool in one script, with Docker's
+`--mount type=image` standing in for a pod: digest stability, image or artifact, and whether a
+non-root container can read the files. It also shows the `FROM scratch` Dockerfile, and what it
+takes to make BuildKit reproducible.
+
 **CRI-O is different.** It can mount OCI **artifacts**, not only images: the Kubernetes
 documentation's own example mounts `quay.io/crio/artifact:v2` (**not tested**). KEP-4639 leaves the
 media types a runtime accepts up to the runtime. A real image is the shape **both** runtimes
@@ -69,9 +74,10 @@ An image volume is the first way to get these four at once:
 | **v1.36** | **stable (GA)**, with production support in both CRI-O and containerd (2.1 or later) |
 
 So the feature exists since 1.31, but it became something you could rely on in a normal cluster only
-at 1.35/1.36. Most of the existing guidance still shows a `FROM scratch` Dockerfile. As far as we
-found (2026-11-02), no tool was dedicated to producing **reproducible, provenance-carrying settings
-images** for it. That gap is this repository.
+at 1.35/1.36. Most of the existing guidance still shows a `FROM scratch` Dockerfile, which gives a
+new digest on every build and can leave the files unreadable to a non-root pod
+([compare/](../compare/README.md)). settings-image is the tool made for image volumes:
+**reproducible, readable, checked, provenance-carrying settings images**, by default.
 
 ## Sources
 

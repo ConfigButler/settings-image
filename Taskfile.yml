@@ -147,6 +147,13 @@ tasks:
       - CGO_ENABLED=0 go build -o {{.BIN}} ./cmd/settings-image
       - test/mount/run.sh
 
+  compare:
+    desc: Build one folder with every folder-to-registry tool and compare digests, shape and mounts
+    # This checkout's settings-image, ahead of any installed one: the comparison is of this code.
+    cmds:
+      - CGO_ENABLED=0 go build -o {{.BIN}} ./cmd/settings-image
+      - PATH="$PWD/bin:$PATH" compare/run.sh {{.CLI_ARGS}}
+
   clean:
     desc: Remove build output
     cmds:

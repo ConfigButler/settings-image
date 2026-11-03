@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1.20
+# The same image, built so the digest depends only on the files. Every line matters:
+#   --chmod=u=rwX,go=rX   modes no longer follow the builder's umask (symbolic: dirs 0755, files 0644)
+# and on the command line (see run.sh):
+#   SOURCE_DATE_EPOCH=0             pins the config's `created`
+#   rewrite-timestamp=true          pins the mtime of every file in the layer
+#   --provenance=false              drops the attestation, which records the build itself
+#   --no-cache, or not: a cache hit gives the same digest anyway
+# What it still cannot do: an executable bit in Git stays executable (X keeps it), and there are
+# no checks on what goes in.
+FROM scratch
+COPY --chmod=u=rwX,go=rX resources /resources
+COPY --chmod=u=rwX,go=rX raw /raw
