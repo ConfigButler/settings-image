@@ -12,28 +12,11 @@ configs/shop/                                    /etc/shop/ in the pod, read-onl
 
 - **The settings that run are declared in the pod spec, by digest.** A change is an ordinary
   rolling update, and `kubectl rollout undo` rolls the settings back.
-- **The same folder always gives the same digest**, so a commit that touches other files rolls no
-  pods.
-- **Nothing in the image executes**: no base image, no shell, just your files.
-
-## Kubernetes-aware, not Kubernetes-only
-
-settings-image is a **settings publisher**, not a general folder-to-image tool. It knows
-Kubernetes objects: it checks what is in `resources/`, turns ConfigMaps into files, insists that a
-Secret is encrypted, and refuses a folder that looks wrong (more than 10 MiB, an unknown file
-beside the two folders). For an arbitrary pile of files, a `FROM scratch` Dockerfile is the
-simpler tool; a folder with only `raw/` skips every Kubernetes check.
-
-**Kubernetes is not required to read the result.** It is a plain OCI image, so anything that pulls
-images can get the files out:
-
-```bash
-crane export ghcr.io/acme/shop-settings@sha256:e788a6fe… - | tar x -C /etc/shop   # any machine
-docker run --mount type=image,source=ghcr.io/acme/shop-settings@sha256:e788a6fe…,target=/settings …
-```
-
-(`--mount type=image` is experimental in Docker; checked on Docker 29.2.) The image has no
-entrypoint and nothing in it runs, so it is only ever a source of files.
+- **The same files give the same digest**, on a laptop or in CI, so a commit that touches other
+  files rolls no pods. (The source repository URL is recorded in the image too: build with the same
+  `--source`, or none, to compare.)
+- **Nothing in the image executes**: no base image, no shell, just your files. Nothing is applied
+  to the cluster either: a Deployment or a Secret in the folder stays a file in the image.
 
 > **Status: v0.1.** The CLI and the GitHub Action work and are used in this repository's own
 > tests; the format may still change before v1. See [docs/plan.md](docs/plan.md).
@@ -53,11 +36,17 @@ pushed: a broken folder exits 3 and names the file.
 
 1. **Two folders.** `resources/` holds Kubernetes objects (YAML or JSON with `apiVersion`, `kind`
    and `metadata.name`). `raw/` holds anything else, copied byte for byte and never read. Your
-   application's own YAML goes in `raw/`.
+   application's own YAML goes in `raw/`. Resources are **packaged, never applied**: your
+   application reads them; settings-image never talks to Kubernetes.
 2. **A ConfigMap's keys also become files**, at `configmaps/<name>/<key>`, so a container can
    mount them like a `configMap` volume. Annotate it `settings-image.configbutler.ai/files: "false"`
    to keep it a resource only.
-3. **A `Secret` must be SOPS-encrypted.** A registry is not a secret store.
+3. **A `Secret` must be SOPS-encrypted.** A registry is not a secret store. It **stays encrypted**
+   in the image and in the mounted file: settings-image never decrypts and never holds a key.
+   Whatever reads it decrypts it with [SOPS](https://getsops.io) and a key you deliver separately,
+   for example your application, or an init container that has the age key from an ordinary
+   Kubernetes Secret ([examples/](examples/README.md#encrypting-a-secret-with-sops) shows the
+   decrypt).
 4. **Nothing else at the top of the folder**, except well-known files such as `README.md`,
    `LICENSE` or `.gitignore`, which are skipped. Anything else stops the build: a resource one
    level too high should not silently go missing.
@@ -70,40 +59,76 @@ Every file in the image is `0644`, owned by root, with a fixed timestamp. The co
 
 ## Try it locally
 
-Install the CLI from a [release](https://github.com/ConfigButler/settings-image/releases)
-(linux/amd64, linux/arm64, darwin/arm64):
+Install the CLI from a [release](https://github.com/ConfigButler/settings-image/releases). The
+binaries are `settings-image_linux_amd64`, `settings-image_linux_arm64` and
+`settings-image_darwin_arm64`; set `asset` to yours. On Linux amd64:
 
 ```bash
 VERSION=v0.1.0
+asset=settings-image_linux_amd64
 base="https://github.com/ConfigButler/settings-image/releases/download/${VERSION}"
-curl -fsSLO "${base}/settings-image_linux_amd64"
-curl -fsSL "${base}/settings-image.sha256sums" | sha256sum -c --ignore-missing
-install -m 0755 settings-image_linux_amd64 /usr/local/bin/settings-image
+curl -fsSLO "${base}/${asset}"
+curl -fsSL "${base}/settings-image.sha256sums" | sha256sum -c --ignore-missing   # macOS: shasum -a 256 -c --ignore-missing
+mkdir -p ~/.local/bin && install -m 0755 "${asset}" ~/.local/bin/settings-image  # or sudo install … /usr/local/bin/
 ```
 
 Or, with Go: `go install github.com/ConfigButler/settings-image/cmd/settings-image@latest`.
 
-Push an example to a throwaway registry, and look at what a pod would see:
+Build an example. This needs nothing but the folder, and prints the image's digest:
 
 ```bash
 git clone https://github.com/ConfigButler/settings-image && cd settings-image
+settings-image build examples/configmap --no-provenance
+# sha256:e788a6fe…
+```
+
+Then push it to a throwaway registry and look at what a pod would see. This needs Docker, and
+[crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane#installation) to read
+the image back:
+
+```bash
 docker run -d --name registry -p 5000:5000 registry:2
 
-settings-image push examples/configmap \
-  --repository localhost:5000/shop-settings --plain-http --no-provenance
+reference=$(settings-image push examples/configmap \
+  --repository localhost:5000/shop-settings --plain-http --no-provenance)
+echo "${reference}"
 # localhost:5000/shop-settings@sha256:e788a6fe…
 
-crane export --insecure localhost:5000/shop-settings@sha256:e788a6fe… - | tar t
+crane export --insecure "${reference}" - | tar t
+# configmaps
+# configmaps/branding
 # configmaps/branding/colour
 # configmaps/branding/logo.png
+# configmaps/shop-settings
 # configmaps/shop-settings/settings.yaml
 # configmaps/shop-settings/welcome.txt
+# resources
 # resources/app.yaml
 ```
 
-`settings-image build <folder>` does the same checks and prints the digest without pushing.
 [examples/](examples/) has more folders to try: custom resources, pictures, and a SOPS-encrypted
-Secret.
+Secret. `docker rm -f registry` cleans up.
+
+## Kubernetes-aware, not Kubernetes-only
+
+settings-image is a **settings publisher**, not a general folder-to-image tool. It knows
+Kubernetes objects: it checks what is in `resources/`, turns ConfigMaps into files, insists that a
+Secret is encrypted, and refuses a folder that looks wrong (more than 10 MiB, an unknown file
+beside the two folders). For an arbitrary pile of files, a `FROM scratch` Dockerfile is the
+simpler tool; a folder with only `raw/` skips every Kubernetes check.
+
+**Kubernetes is not required to read the result.** It is a plain OCI image, so anything that pulls
+images can get the files out. With the `reference` from above:
+
+```bash
+mkdir -p settings && crane export --insecure "${reference}" - | tar x -C settings   # any machine
+docker pull "${reference}" && docker run --rm \
+  --mount "type=image,source=${reference},target=/settings" busybox:1.36.1 ls -R /settings
+```
+
+(`--mount type=image` is experimental in Docker, and needs the image pulled first; checked on
+Docker 29.2.) The image has no entrypoint and nothing in it runs, so it is only ever a source of
+files.
 
 ## Mount it
 
